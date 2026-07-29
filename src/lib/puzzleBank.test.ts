@@ -82,9 +82,12 @@ describe('puzzle bank contents', () => {
     for (const puzzle of puzzles) {
       const { hand, melds } = puzzle.position;
       const total = hand.length + melds.length * 3;
-      // A decision taken with a drawn tile in hand sits at 14; a call decision
-      // is taken at 13 with the called tile still outside the hand.
-      const expected = puzzle.position.drawnTile ? 14 : 13;
+
+      // A discard decision is always taken holding 14 tiles' worth — but not
+      // always with a drawn tile. After a pon the player holds 11 concealed
+      // plus a 3-tile meld and discards without having drawn, so keying this
+      // off drawnTile would reject legitimate post-call positions.
+      const expected = puzzle.kind === 'call' ? 13 : 14;
       expect(total, `${puzzle.id} has ${total} tiles`).toBe(expected);
     }
   });

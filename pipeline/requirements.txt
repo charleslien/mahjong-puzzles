@@ -1,0 +1,9 @@
+# extract.py and export.py are stdlib-only by design, so a 12GB dump can be
+# processed without a build step.
+#
+# Training (mine.py) will need torch; it is left uncommented-out until the
+# training script actually exists, so nobody installs 2GB of CUDA wheels for a
+# pipeline stage that raises NotImplementedError.
+#
+# torch>=2.2
+# numpy>=1.26

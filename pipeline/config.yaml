@@ -1,0 +1,34 @@
+# Publication criteria. Defaults mirror pipeline/criteria.py; this file exists so
+# a generation run can be reproduced from a single artifact.
+
+evaluation:
+  # Actions within this many placement points of the best are graded correct.
+  # Mahjong frequently has several defensible plays, so grading against a single
+  # answer would mark correct play wrong.
+  epsilon_pt: 0.15
+
+  # The best action must beat the best non-accepted action by at least this much.
+  # This is the replacement for chess's "only one move holds the win".
+  min_margin_pt: 0.40
+
+  # More accepted answers than this and the position teaches nothing.
+  max_accepted: 3
+
+exclusions:
+  # akochan is documented as weak at kan decisions.
+  kinds: [kan]
+
+  # Below this many live tiles, akochan's numerical instability and its loose
+  # defense both matter more than its EV is worth.
+  min_tiles_left: 8
+
+mining:
+  # Prefer positions where pure tile efficiency disagrees with the model — the
+  # mahjong analogue of Lichess's shallow-vs-deep filter.
+  prefer_naive_disagreement: true
+
+  # Cap per source game so one long hanchan cannot dominate the bank.
+  max_per_game: 3
+
+output:
+  shard_size: 250
