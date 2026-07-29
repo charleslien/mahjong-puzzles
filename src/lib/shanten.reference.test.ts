@@ -134,7 +134,7 @@ function randomHand(random: () => number): number[] {
 describe('shanten agrees with the brute-force reference', () => {
   // Uniformly random hands are scattered across the whole tile range, which
   // makes the depth-2 search prohibitive, so these are only verified to depth 1.
-  it('matches on uniformly random hands up to 1-shanten', { timeout: 60_000 }, () => {
+  it('matches on uniformly random hands up to 1-shanten', () => {
     const random = makeRandom(20260729);
     let checked = 0;
 
@@ -155,7 +155,7 @@ describe('shanten agrees with the brute-force reference', () => {
     expect(checked).toBeGreaterThan(5);
   });
 
-  it('matches on hands seeded toward tenpai', { timeout: 60_000 }, () => {
+  it('matches on hands seeded toward tenpai', () => {
     const random = makeRandom(777);
     let checked = 0;
 
