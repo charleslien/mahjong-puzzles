@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "build:seed": "vite-node scripts/build-seed-bank.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

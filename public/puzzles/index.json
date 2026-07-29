@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29",
+  "provenance": "Synthetic tile-efficiency drills. Hands dealt from a shuffled wall with a fixed seed; answers computed by the shanten/ukeire library in src/lib. Scored in tiles of acceptance, not AI placement points — no yaku, score or safety judgement is applied.",
+  "count": 120,
+  "shards": [
+    {
+      "file": "seed-000.json",
+      "count": 120,
+      "kinds": [
+        "discard"
+      ]
+    }
+  ]
+}
