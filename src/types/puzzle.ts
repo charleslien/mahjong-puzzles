@@ -88,8 +88,21 @@ export interface PuzzleAction {
   tile?: Tile;
   /** Expected final placement points for this action. */
   ev: number;
-  /** EV shortfall against the best action; always >= 0. */
+  /**
+   * Shortfall against the best action; always >= 0. This is the scalar used for
+   * grading and ranking.
+   *
+   * Careful: for `ukeire_tiles` puzzles this is a *composite* — an action that
+   * worsens shanten carries a large fixed penalty on top of any acceptance gap,
+   * so the raw number is not a tile count. Never render it as one. Use
+   * `describeLoss` in lib/grade, which reads `shantenAfter` and reports the
+   * shanten consequence instead.
+   */
   loss: number;
+  /** Resulting shanten, when the evaluator computed it. */
+  shantenAfter?: number;
+  /** Resulting tiles of acceptance, when the evaluator computed it. */
+  ukeire?: number;
   /** Imitation-policy probability that houou-level play picks this, 0..1. */
   policy?: number;
   /** Within epsilon of the best action, and therefore graded as correct. */
@@ -144,6 +157,8 @@ export interface Puzzle {
   actions: PuzzleAction[];
   /** Action ids that count as correct. Never empty. */
   acceptedActionIds: string[];
+  /** Shanten reached by the best action, when the evaluator computed it. */
+  bestShanten?: number;
   /** Themes for filtering, e.g. "push-fold", "efficiency-trap", "all-last". */
   tags: string[];
   /**

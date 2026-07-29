@@ -28,6 +28,7 @@ import {
   indexToTile,
   isTerminalOrHonor,
   sortTiles,
+  tileLabel,
   tileToIndex,
   type Tile,
 } from '../src/lib/tiles';
@@ -152,16 +153,29 @@ function buildPuzzle(id: string, random: () => number): Candidate | undefined {
   const bestShanten = options[0].shantenAfter;
   const bestUkeire = options[0].ukeire;
 
+  // The interesting decision is among discards that all preserve the best
+  // shanten. A hand where only one discard avoids regressing is a "don't break
+  // your hand" drill, which is trivial and drowns out the acceptance comparison.
+  const tier = options.filter((option) => option.shantenAfter === bestShanten);
+  if (tier.length < 3) return undefined;
+
   const actions = options.map((option) => {
-    const shantenRegression = Math.max(0, option.shantenAfter - bestShanten);
-    const loss = shantenRegression * SHANTEN_REGRESSION_PENALTY + (bestUkeire - option.ukeire);
+    const regression = Math.max(0, option.shantenAfter - bestShanten);
+    // Composite grading scalar. Regressions are priced beyond any acceptance
+    // gap so they always grade worse; the UI reports the shanten consequence
+    // rather than this number. See describeLoss in lib/grade.
+    const loss = regression * SHANTEN_REGRESSION_PENALTY + (bestUkeire - option.ukeire);
     return {
       id: `discard:${option.tile}`,
-      label: `Discard ${option.tile}`,
+      // Spelled out, because honor tiles are single letters that do not survive
+      // being lowercased or read out of context.
+      label: `Discard ${tileLabel(option.tile)}`,
       tile: option.tile,
       // EV is expressed so that higher is better, matching the schema.
       ev: -loss,
       loss,
+      shantenAfter: option.shantenAfter,
+      ukeire: option.ukeire,
       accepted: loss <= EPSILON_TILES,
     };
   });
@@ -169,28 +183,34 @@ function buildPuzzle(id: string, random: () => number): Candidate | undefined {
   const accepted = actions.filter((action) => action.accepted);
   if (accepted.length === 0) return undefined;
   // A drill where nearly everything is correct teaches nothing.
-  if (accepted.length > 3) return undefined;
+  if (accepted.length > 2) return undefined;
 
-  const bestRejected = actions.find((action) => !action.accepted);
-  if (!bestRejected) return undefined;
-  const margin = bestRejected.loss;
+  // Margin is measured within the tier, so it is a genuine acceptance gap in
+  // tiles rather than an artefact of the regression penalty.
+  const tierLosses = actions
+    .filter((action) => action.shantenAfter === bestShanten && !action.accepted)
+    .map((action) => action.loss);
+  if (tierLosses.length === 0) return undefined;
+  const margin = Math.min(...tierLosses);
   // Require a real gap so the drill has a defensible answer.
   if (margin < 2) return undefined;
 
-  const spread = Math.max(...actions.map((action) => action.loss));
+  const spread = Math.max(...tierLosses);
 
   const tags = ['efficiency'];
   if (bestShanten === 0) tags.push('tenpai-choice');
   if (currentShanten === 2) tags.push('two-shanten');
-  if (actions.some((action) => action.loss >= SHANTEN_REGRESSION_PENALTY)) {
-    tags.push('shanten-preserving');
-  }
+  if (tier.length >= 5) tags.push('wide-choice');
 
-  // Tighter margins and more plausible-looking alternatives are harder. This is
-  // a crude proxy; a server-backed build would learn difficulty from solvers.
+  // Harder when the acceptance gap is narrow and when more discards look
+  // plausible because they hold the same shanten. Crude by design; a
+  // server-backed build would learn difficulty from real solve attempts.
   const difficulty = Math.max(
     5,
-    Math.min(95, Math.round(70 - margin * 3 + (currentShanten - 1) * 10 + accepted.length * 5)),
+    Math.min(
+      95,
+      Math.round(46 - margin * 2.5 + tier.length * 4 + (currentShanten - 1) * 6 + accepted.length * 4),
+    ),
   );
 
   const puzzle: Puzzle = {
@@ -212,6 +232,7 @@ function buildPuzzle(id: string, random: () => number): Candidate | undefined {
     },
     actions,
     acceptedActionIds: accepted.map((action) => action.id),
+    bestShanten,
     tags,
     difficulty,
     evaluation: {
@@ -223,7 +244,13 @@ function buildPuzzle(id: string, random: () => number): Candidate | undefined {
       unit: 'ukeire_tiles',
     },
     source: { dataset: 'synthetic-seed', authored: false },
-    explanation: buildExplanation(bestShanten, bestUkeire, accepted.length, options[0].acceptedTiles),
+    explanation: buildExplanation(
+      bestShanten,
+      bestUkeire,
+      accepted.length,
+      options[0].acceptedTiles,
+      tier.length,
+    ),
   };
 
   return { puzzle, spread };
@@ -234,6 +261,7 @@ function buildExplanation(
   bestUkeire: number,
   acceptedCount: number,
   acceptedTiles: Tile[],
+  tierSize: number,
 ): string {
   const shape =
     bestShanten === 0
@@ -243,7 +271,11 @@ function buildExplanation(
         : `keeps the hand at ${bestShanten}-shanten`;
   const waits = acceptedTiles.length > 0 ? ` Acceptance: ${acceptedTiles.join(' ')}.` : '';
   const plural = acceptedCount > 1 ? `${acceptedCount} discards tie for best. ` : '';
-  return `${plural}The best discard ${shape} with ${bestUkeire} tiles of acceptance.${waits} This drill scores tile efficiency only — it ignores yaku, score and safety.`;
+  return (
+    `${plural}The best discard ${shape} with ${bestUkeire} tiles of acceptance.${waits} ` +
+    `${tierSize} discards hold that shanten, so the choice is which of them accepts the most. ` +
+    'This drill scores tile efficiency only — it ignores yaku, score and safety.'
+  );
 }
 
 function main(): void {

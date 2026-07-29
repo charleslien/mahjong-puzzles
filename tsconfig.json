@@ -19,7 +19,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": false,
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "vite/client", "node"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts", "vite.config.ts"]
 }

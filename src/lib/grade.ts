@@ -97,11 +97,37 @@ export function gradeAnswer(puzzle: Puzzle, actionId: string): GradedAnswer {
   };
 }
 
-/** Format a loss for display, e.g. "−1.2 placement pt" or "−6 tiles". */
+/** Format a placement-point loss for display, e.g. "−1.20 placement pt". */
 export function formatLoss(loss: number, unit: EvalUnit): string {
   if (loss <= 0) return '—';
   const magnitude = unit === 'ukeire_tiles' ? String(Math.round(loss)) : loss.toFixed(2);
   return `−${magnitude} ${UNIT_LABELS[unit]}`;
+}
+
+/**
+ * Describe what an action actually costs, in terms that are true.
+ *
+ * For efficiency puzzles the grading scalar is a composite that prices a shanten
+ * regression at a large fixed penalty, so printing it as a tile count would be a
+ * lie. When an action worsens shanten, say so; only report an acceptance gap
+ * between actions that reach the same shanten.
+ */
+export function describeLoss(
+  action: Pick<PuzzleAction, 'loss' | 'shantenAfter'>,
+  unit: EvalUnit,
+  bestShanten?: number,
+): string {
+  if (action.loss <= 0) return 'best';
+
+  if (unit === 'ukeire_tiles' && bestShanten !== undefined && action.shantenAfter !== undefined) {
+    const regression = action.shantenAfter - bestShanten;
+    if (regression > 0) {
+      return regression === 1 ? '−1 shanten' : `−${regression} shanten`;
+    }
+    return `−${Math.round(action.loss)} tiles`;
+  }
+
+  return formatLoss(action.loss, unit);
 }
 
 /**

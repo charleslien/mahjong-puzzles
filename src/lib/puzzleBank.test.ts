@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { shanten } from './shanten';
 import { analyzeDiscards } from './ukeire';
 import { NUM_TILE_TYPES, tileToIndex } from './tiles';
-import { bestAction, gradeAnswer } from './grade';
+import { bestAction, describeLoss, gradeAnswer } from './grade';
 import { SCHEMA_VERSION, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
 
 const BANK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public', 'puzzles');
@@ -152,6 +152,56 @@ describe('puzzle bank contents', () => {
     for (const puzzle of puzzles) {
       expect(puzzle.difficulty).toBeGreaterThanOrEqual(0);
       expect(puzzle.difficulty).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('never reports an acceptance loss larger than the tile supply', () => {
+    // A tiles-of-acceptance figure above 136 would be nonsense. This is the
+    // guard for the composite grading scalar leaking into a tile count: a
+    // shanten regression must be described as such, never priced in tiles.
+    for (const puzzle of puzzles) {
+      if (puzzle.evaluation.unit !== 'ukeire_tiles') continue;
+      for (const action of puzzle.actions) {
+        const described = describeLoss(action, puzzle.evaluation.unit, puzzle.bestShanten);
+        if (!described.endsWith('tiles')) continue;
+        const magnitude = Number(described.replace(/[^0-9]/g, ''));
+        expect(magnitude, `${puzzle.id} ${action.id} reports ${described}`).toBeLessThanOrEqual(136);
+      }
+    }
+  });
+
+  it('describes shanten-regressing discards in shanten, not tiles', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.bestShanten === undefined) continue;
+      for (const action of puzzle.actions) {
+        if (action.shantenAfter === undefined) continue;
+        if (action.shantenAfter <= puzzle.bestShanten) continue;
+        const described = describeLoss(action, puzzle.evaluation.unit, puzzle.bestShanten);
+        expect(described, `${puzzle.id} ${action.id}`).toContain('shanten');
+      }
+    }
+  });
+
+  it('offers a real choice among discards that hold the best shanten', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.bestShanten === undefined) continue;
+      const tier = puzzle.actions.filter((action) => action.shantenAfter === puzzle.bestShanten);
+      // Fewer than three and the drill degenerates into "do not break your hand".
+      expect(tier.length, `${puzzle.id} has only ${tier.length} non-regressing discards`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('measures its margin within the best-shanten tier', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.bestShanten === undefined) continue;
+      if (puzzle.evaluation.unit !== 'ukeire_tiles') continue;
+      const tierLosses = puzzle.actions
+        .filter((action) => action.shantenAfter === puzzle.bestShanten && !action.accepted)
+        .map((action) => action.loss);
+      expect(tierLosses.length, `${puzzle.id}`).toBeGreaterThan(0);
+      expect(puzzle.evaluation.margin).toBeCloseTo(Math.min(...tierLosses), 6);
+      // A within-tier margin is a true tile count.
+      expect(puzzle.evaluation.margin).toBeLessThan(136);
     }
   });
 
