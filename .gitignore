@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.vite/
+
+# Pipeline working data — never commit multi-GB log dumps
+pipeline/data/
+pipeline/.venv/
+pipeline/**/__pycache__/
+*.mjson
+*.mjson.gz
+*.db
