@@ -4,6 +4,14 @@ dist/
 *.local
 .vite/
 
+# Secrets. `*.local` above already covers .env.local, but a bare `.env` is the
+# easy mistake — it is the file most people reach for, and the service-role key
+# that belongs in it bypasses every row-level security policy in the project.
+# .env.example is the committed template and holds no values.
+.env
+.env.*
+!.env.example
+
 # Vendored C++ dependency. Cloned and built by scripts/build-akochan.sh, which is
 # the committed record of how; the tree itself is ~500MB of sources and objects.
 vendor/
