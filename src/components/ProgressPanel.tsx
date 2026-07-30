@@ -1,5 +1,6 @@
 import { GRADE_LABELS, type Grade } from '../lib/grade';
 import { summarize, type Progress } from '../lib/progress';
+import type { Puzzle } from '../types/puzzle';
 
 const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
@@ -13,69 +14,111 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-export function ProgressPanel({ progress, onClear }: { progress: Progress; onClear: () => void }) {
+function when(at: number): string {
+  const minutes = Math.round((Date.now() - at) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+export function ProgressPanel({
+  progress,
+  puzzles,
+  onClear,
+}: {
+  progress: Progress;
+  puzzles: Puzzle[];
+  onClear: () => void;
+}) {
   const summary = summarize(progress);
+  const byId = new Map(puzzles.map((puzzle) => [puzzle.id, puzzle]));
 
   if (summary.attempted === 0) {
     return (
-      <section className="panel">
-        <h2>Progress</h2>
+      <section className="panel panel--empty">
+        <h2>Nothing solved yet</h2>
         <p className="muted">
-          Nothing solved yet. Progress is stored in this browser only — there is no account and no
-          server, so clearing site data resets it.
+          Answer a few puzzles and this is where they will be — every hand you have played, what you
+          chose, and how it scored.
         </p>
+        <a className="button button--primary" href="#/train">
+          Start training
+        </a>
       </section>
     );
   }
 
-  const worst = summary.gradeCounts.mistake + summary.gradeCounts.blunder;
+  // Newest first, so the most recent hand is the easiest one to go back to.
+  const history = [...progress.attempts].sort((a, b) => b.at - a.at);
 
   return (
-    <section className="panel">
-      <h2>Progress</h2>
+    <>
+      <section className="panel">
+        <div className="stats">
+          <Stat label="played" value={String(summary.attempted)} />
+          <Stat
+            label="best answer"
+            value={`${Math.round(summary.accuracy * 100)}%`}
+            hint={`${summary.solved} of ${summary.attempted}`}
+          />
+          <Stat
+            label="streak"
+            value={String(summary.currentStreak)}
+            hint={`best ${summary.bestStreak}`}
+          />
+        </div>
 
-      <div className="stats">
-        <Stat label="attempted" value={String(summary.attempted)} />
-        <Stat
-          label="optimal"
-          value={`${Math.round(summary.accuracy * 100)}%`}
-          hint={`${summary.solved} of ${summary.attempted}`}
-        />
-        <Stat label="avg score" value={summary.averageScore.toFixed(0)} hint="0–100 per puzzle" />
-        <Stat
-          label="streak"
-          value={String(summary.currentStreak)}
-          hint={`best ${summary.bestStreak}`}
-        />
-      </div>
+        <ul className="gradebars">
+          {GRADE_ORDER.map((grade) => {
+            const count = summary.gradeCounts[grade];
+            const share = summary.attempted === 0 ? 0 : (count / summary.attempted) * 100;
+            return (
+              <li key={grade} className="gradebar">
+                <span className="gradebar__label">{GRADE_LABELS[grade]}</span>
+                <span className="gradebar__track">
+                  <span
+                    className={`gradebar__fill gradebar__fill--${grade}`}
+                    style={{ width: `${share}%` }}
+                  />
+                </span>
+                <span className="gradebar__count">{count}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
-      <h3>Grade breakdown</h3>
-      <ul className="gradebars">
-        {GRADE_ORDER.map((grade) => {
-          const count = summary.gradeCounts[grade];
-          const share = summary.attempted === 0 ? 0 : (count / summary.attempted) * 100;
-          return (
-            <li key={grade} className="gradebar">
-              <span className="gradebar__label">{GRADE_LABELS[grade]}</span>
-              <span className="gradebar__track">
-                <span className={`gradebar__fill gradebar__fill--${grade}`} style={{ width: `${share}%` }} />
-              </span>
-              <span className="gradebar__count">{count}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <section className="panel">
+        <h2>Hands you have played</h2>
+        <ul className="history">
+          {history.map((attempt) => {
+            const puzzle = byId.get(attempt.puzzleId);
+            return (
+              <li key={`${attempt.puzzleId}-${attempt.at}`} className="history__row">
+                <a className="history__link" href={`#/p/${attempt.puzzleId}`}>
+                  <span className={`chip chip--${attempt.grade}`}>
+                    {GRADE_LABELS[attempt.grade]}
+                  </span>
+                  <span className="history__what">
+                    {puzzle
+                      ? puzzle.actions.find((action) => action.id === attempt.actionId)?.label ??
+                        attempt.actionId
+                      : attempt.actionId}
+                  </span>
+                  {puzzle && <span className="history__kind">{puzzle.kind}</span>}
+                  <span className="history__when">{when(attempt.at)}</span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
 
-      {worst > 0 && (
-        <p className="muted">
-          {worst} answer{worst === 1 ? '' : 's'} landed in mistake or blunder territory. Those are the
-          ones worth revisiting.
-        </p>
-      )}
-
-      <button type="button" className="button button--danger" onClick={onClear}>
-        Reset progress
-      </button>
-    </section>
+        <button type="button" className="button button--danger" onClick={onClear}>
+          Reset progress
+        </button>
+      </section>
+    </>
   );
 }

@@ -1,116 +1,78 @@
 import type { PuzzleIndex } from '../types/puzzle';
 
 /**
- * The methodology page. This exists because a puzzle site that grades your play
- * owes you an account of where its answers come from, including the parts that
- * are weaker than a reader might assume.
+ * The about page.
+ *
+ * Previously this was a methodology write-up: feature encodings, evaluator
+ * agreement rates, why a scale was chosen. All true, all interesting to whoever
+ * built it, none of it what someone deciding whether to trust a puzzle wants.
+ *
+ * What a player needs is short: where the positions come from, who says what the
+ * right answer is, and where that judgement is weak. The engineering detail lives
+ * in the repository, which is linked, and is not reproduced here.
  */
 export function About({ index }: { index: PuzzleIndex }) {
   return (
     <section className="panel prose">
-      <h2>How this works</h2>
+      <h2>About</h2>
 
-      <p>
-        Chess puzzle generators lean on three things mahjong does not have: a single best move, a
-        forced line to verify it, and an engine eval that is effectively ground truth. Lichess mines
-        positions where a shallow search and a deep search disagree, then keeps only those where one
-        move survives and every alternative collapses.
-      </p>
-
-      <p>
-        Mahjong is imperfect-information and stochastic, so there is no forced line and often no
-        unique best play. Each of those three ingredients needs a statistical replacement:
+      <p className="lede">
+        {index.count.toLocaleString()} riichi decisions taken from real games, each scored by a
+        mahjong engine, so you can find out whether the tile you would have played is the one that
+        actually wins points.
       </p>
 
-      <ul>
-        <li>
-          <strong>Centipawn loss</strong> becomes loss in expected placement points — the same unit
-          mahjong reviewers already use.
-        </li>
-        <li>
-          <strong>Uniqueness</strong> becomes a margin test. A position is only published when the
-          best action leads the next one by a real gap, and everything within epsilon of the best is
-          accepted as correct.
-        </li>
-        <li>
-          <strong>Depth verification</strong> becomes cross-evaluator agreement. Two independent
-          evaluators must rank the same action first, or the position is discarded rather than
-          published.
-        </li>
-      </ul>
-
-      <h3>Current bank</h3>
+      <h3>Where the hands come from</h3>
       <p>
-        <strong>{index.count} puzzles.</strong> {index.provenance}
-      </p>
-      <h3>Where the evaluations come from</h3>
-      <p>
-        The strongest riichi AI, <em>Mortal</em>, does not publish its trained weights — its author
-        withheld them deliberately to avoid arming cheaters. Neither does Kanachan. So this pipeline
-        trains its own model rather than relying on anyone's withheld or leaked weights.
-      </p>
-      <p>
-        Two evaluators, cross-checked. A 2.2M-parameter network trained on 20 million houou decisions
-        does the cheap mass mining: it reaches 72.9% agreement with what houou players actually
-        discarded on games it never saw, which is what a candidate <em>finder</em> needs.{' '}
-        <em>akochan</em>, which is fully open and needs no weights, then re-scores the survivors by
-        expected-value search and supplies every number shown here. On Mortal's own published
-        benchmarks akochan trails it by roughly 0.09 average placement across 110,000 games — a real
-        gap, but far closer than its reputation suggests.
-      </p>
-      <p>
-        Positions where the two disagree are thrown away, not published — that discarded 14% of
-        otherwise-publishable candidates. Kan decisions and extreme endgame spots are excluded
-        outright, since those are akochan's documented weak points.
-      </p>
-      <p>
-        <strong>Riichi puzzles use a different second opinion.</strong> The network ranks discards,
-        so it has no view on whether to declare and cannot corroborate that decision. In its place
-        stands the choice the houou player actually made at the table — a single strong human rather
-        than a panel, but genuinely independent of a search. A riichi position is published only when
-        akochan and that player agree.
-      </p>
-      <p className="callout">
-        What this does <em>not</em> mean: that the answers are ground truth. akochan is a strong
-        engine, not an oracle, and it is measurably weaker than the best AI available. Positions are
-        discard and riichi decisions only — calls and push-or-fold are not yet mined, because
-        declining a call leaves no trace in a game log to learn from. Difficulty is derived from the
-        evaluation rather than from whether anyone actually gets it wrong.
+        Every position is a real one, played in Tenhou's houou lobby — the room the strongest
+        players use. Nothing is invented or randomly dealt, so the scores, the discards and the
+        pressure you are under all really happened. You can step back through any hand to see how it
+        got there.
       </p>
 
-      <h3>No model in your browser</h3>
+      <h3>Who decides the answer</h3>
       <p>
-        Every evaluation is precomputed offline and shipped as static JSON. No network weights are
-        sent to the browser, because weights delivered to a browser are trivially extractable — doing
-        that would recreate exactly the risk that keeps Mortal's weights private in the first place.
+        Answers come from <em>akochan</em>, an open mahjong engine that searches ahead and scores
+        each option by how it changes your expected finishing position. A second judge has to agree
+        before a puzzle is published: for tile choices that is a neural network trained on twenty
+        million decisions by strong players, and for riichi calls it is the player who was actually
+        sitting there. Where the two disagree, the position is thrown out rather than guessed at.
+      </p>
+      <p>
+        Answers are given in <strong>placement points</strong> — what a choice is worth in final
+        standings, not just in this hand. That is why folding is sometimes correct even when it
+        looks slow.
       </p>
 
-      <h3>Difficulty</h3>
+      <h3>What it is not</h3>
       <p>
-        Lichess learns difficulty from real solve attempts via Glicko-2. That needs a server to
-        aggregate across users, and this site is static, so difficulty is currently a model-derived
-        proxy from evaluation margin and hand complexity. The schema is shaped so real ratings can be
-        added later without a migration.
+        The engine is strong but not perfect, and it is not the strongest program in existence. On
+        close calls, treat a small difference as a matter of taste rather than a verdict — puzzles
+        where the top two answers are nearly tied are filtered out for exactly that reason, but the
+        line is a judgement call. Kan decisions and desperate endgames are left out altogether,
+        because that is where the engine is least reliable.
+      </p>
+      <p>
+        Difficulty is estimated from the position, not from how often people get it wrong. Nothing
+        you do here is judged by a human.
       </p>
 
-      <h3>Attribution</h3>
-      <ul className="links">
-        <li>
-          Tenhou houou logs in mjai format, CC BY 4.0 —{' '}
-          <a href="https://github.com/NikkeTryHard/tenhou-to-mjai">tenhou-to-mjai</a>
-        </li>
-        <li>
-          <a href="https://github.com/critter-mj/akochan">akochan</a> — open expected-value engine
-        </li>
-        <li>
-          <a href="https://mortal.ekyu.moe/perf/strength.html">Mortal strength benchmarks</a> — the
-          source of the akochan comparison above
-        </li>
-        <li>
-          <a href="https://database.lichess.org/">Lichess open database</a> — the puzzle-generation
-          model this borrows from
-        </li>
-      </ul>
+      <h3>Your progress</h3>
+      <p>
+        Everything you play is saved in this browser. Signing in with Google keeps it across devices
+        and lets your results count toward how hard each puzzle is rated. You can use the whole site
+        without an account.
+      </p>
+
+      <p className="muted">
+        Hands are used under CC BY 4.0. <a href="https://github.com/charleslien/mahjong-puzzles">
+          Source and full method
+        </a>
+        {' · '}
+        <a href="https://github.com/critter-mj/akochan">akochan</a>
+        {' · '}
+        <a href="https://github.com/NikkeTryHard/tenhou-to-mjai">tenhou-to-mjai</a>
+      </p>
     </section>
   );
 }

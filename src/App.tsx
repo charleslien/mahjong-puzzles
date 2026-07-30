@@ -4,7 +4,6 @@ import { About } from './components/About';
 import { AccountButton } from './components/AccountButton';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
-import { ReplayView } from './components/ReplayView';
 import { gradeAnswer, type GradedAnswer } from './lib/grade';
 import { filterPuzzles, loadBank, shuffled, type LoadedBank } from './lib/puzzleBank';
 import {
@@ -20,7 +19,7 @@ import {
 import { recordAttempt as recordRemoteAttempt } from './lib/supabase';
 import type { Puzzle } from './types/puzzle';
 
-type View = 'train' | 'replay' | 'progress' | 'about';
+type View = 'train' | 'progress' | 'about';
 
 interface Route {
   view: View;
@@ -30,7 +29,6 @@ interface Route {
 function parseHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   if (hash.startsWith('p/')) return { view: 'train', puzzleId: hash.slice(2) };
-  if (hash === 'replay') return { view: 'replay' };
   if (hash === 'progress') return { view: 'progress' };
   if (hash === 'about') return { view: 'about' };
   return { view: 'train' };
@@ -166,7 +164,7 @@ export default function App() {
           </span>
           <div>
             <h1>Mahjong Puzzles</h1>
-            <p className="topbar__tagline">Riichi decision drills, graded by evaluation loss</p>
+            <p className="topbar__tagline">Practise the decisions that actually cost you points</p>
           </div>
         </div>
 
@@ -174,14 +172,11 @@ export default function App() {
           <a href="#/train" className={route.view === 'train' ? 'active' : ''}>
             Train
           </a>
-          <a href="#/replay" className={route.view === 'replay' ? 'active' : ''}>
-            Replay
-          </a>
           <a href="#/progress" className={route.view === 'progress' ? 'active' : ''}>
             Progress
           </a>
           <a href="#/about" className={route.view === 'about' ? 'active' : ''}>
-            Method
+            About
           </a>
         </nav>
         <AccountButton />
@@ -218,11 +213,23 @@ export default function App() {
                 ))}
               </div>
 
+              {/* The score was a small grey word in the corner. It is the thing a
+                  solver checks most often, so it reads as a figure now. */}
               <div className="sessionbar__group">
-                <span className="sessionbar__streak">
-                  streak <strong>{progress.currentStreak}</strong>
+                <span className="score" title="Correct answers in a row">
+                  <strong className="score__value">{progress.currentStreak}</strong>
+                  <span className="score__label">streak</span>
                 </span>
-                <button type="button" className="button" onClick={startFreshSession}>
+                <span className="score" title="Puzzles you have answered">
+                  <strong className="score__value">{progress.attempts.length}</strong>
+                  <span className="score__label">played</span>
+                </span>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={startFreshSession}
+                  title="Deal a different set"
+                >
                   Shuffle
                 </button>
               </div>
@@ -253,13 +260,10 @@ export default function App() {
           </>
         )}
 
-        {route.view === 'replay' && (
-          <ReplayView basePath={import.meta.env.BASE_URL} />
-        )}
-
         {bank && route.view === 'progress' && (
           <ProgressPanel
             progress={progress}
+            puzzles={bank.puzzles}
             onClear={() => setProgress(clearProgress())}
           />
         )}
@@ -268,9 +272,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <span>
-          Positions and evaluations are precomputed offline; no model runs in your browser.
-        </span>
+        <span>Real hands from Tenhou's houou lobby, scored by the akochan engine.</span>
         <a href="https://github.com/charleslien/mahjong-puzzles">Source</a>
       </footer>
     </div>

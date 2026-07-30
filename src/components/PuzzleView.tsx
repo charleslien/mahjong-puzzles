@@ -18,6 +18,13 @@ const PROMPTS: Record<Puzzle['kind'], string> = {
   placement: 'What does the placement situation demand?',
 };
 
+/** The difficulty bands the session filter offers, so the two agree. */
+function difficultyWord(difficulty: number): string {
+  if (difficulty <= 40) return 'Easy';
+  if (difficulty <= 65) return 'Medium';
+  return 'Hard';
+}
+
 /**
  * Frames for the hand this puzzle came from, ending at the decision.
  *
@@ -144,18 +151,24 @@ export function PuzzleView({
       <header className="puzzle__head">
         <div className="puzzle__meta">
           <span className="puzzle__counter">
-            {index + 1} / {total}
+            {index + 1} <span className="muted">of {total}</span>
           </span>
-          <span className="puzzle__id">{puzzle.id}</span>
-          {puzzle.tags.map((tag) => (
+          {/* Tags carry the theme; the raw record id does not mean anything to a
+              solver, so it survives only as the permalink it is useful for. */}
+          {puzzle.tags.slice(0, 3).map((tag) => (
             <span key={tag} className="tag">
-              {tag}
+              {tag.replace(/-/g, ' ')}
             </span>
           ))}
         </div>
-        <span className="puzzle__difficulty" title="Model-derived difficulty proxy, 0–100">
-          difficulty {puzzle.difficulty}
-        </span>
+        <div className="puzzle__meta">
+          <span className="puzzle__difficulty" title={`Difficulty ${puzzle.difficulty} of 100`}>
+            {difficultyWord(puzzle.difficulty)}
+          </span>
+          <a className="puzzle__link" href={`#/p/${puzzle.id}`} title="Link to this puzzle">
+            link
+          </a>
+        </div>
       </header>
 
       <GameBoard
@@ -170,55 +183,45 @@ export function PuzzleView({
       />
 
       {hasHistory && (
-        <div className="history">
-          <div className="history__head">
-            <h2 className="history__title">Review this hand</h2>
-            <span className="history__count">
-              move {cursor + 1} of {frames.length}
-            </span>
-          </div>
-
-          <div className="history__controls">
+        <div className="scrub">
+          {/* One strip rather than a titled card with prose, a slider, a keyboard
+              legend and a checkbox. Stepping back through a hand is a side
+              errand; it should not outweigh the question being asked. */}
+          <div className="scrub__controls">
             <button
               type="button"
-              className="button"
+              className="iconbutton"
               onClick={toStart}
               disabled={cursor === 0}
-              title="Home"
+              title="Jump to the start of the hand (Home)"
+              aria-label="Start of hand"
             >
-              ⏮ Start
+              ⏮
             </button>
             <button
               type="button"
-              className="button"
+              className="iconbutton"
               onClick={stepBack}
               disabled={cursor === 0}
-              title="Left arrow"
+              title="Step back (left arrow)"
+              aria-label="Step back"
             >
-              ◀ Back
+              ◀
             </button>
             <button
               type="button"
-              className="button"
+              className="iconbutton"
               onClick={stepForward}
               disabled={atDecision}
-              title="Right arrow"
+              title="Step forward (right arrow)"
+              aria-label="Step forward"
             >
-              Forward ▶
-            </button>
-            <button
-              type="button"
-              className={`button ${atDecision ? '' : 'button--primary'}`}
-              onClick={toDecision}
-              disabled={atDecision}
-              title="End or Escape"
-            >
-              ⏭ Back to the decision
+              ▶
             </button>
           </div>
 
           <input
-            className="history__scrub"
+            className="scrub__range"
             type="range"
             min={0}
             max={decisionFrame}
@@ -227,69 +230,67 @@ export function PuzzleView({
             aria-label="Position in the hand"
           />
 
-          <p className="history__keys">
-            <kbd>←</kbd> <kbd>→</kbd> step · <kbd>Home</kbd> start ·{' '}
-            <kbd>Esc</kbd> decision{answered ? ' · ' : ''}
-            {answered && (
-              <>
-                <kbd>Enter</kbd> next puzzle
-              </>
-            )}
-          </p>
+          {/* Reserved width, so counting up from "1 of 41" to "41 of 41" cannot
+              nudge the controls sideways. */}
+          <span className="scrub__count">
+            {cursor + 1}/{frames.length}
+          </span>
 
-          <p className="history__line">
-            {atDecision ? (
-              <>
-                <strong>You are at the decision.</strong> Step back to see how the hand got here —
-                opponents' hands stay hidden until you answer.
-              </>
-            ) : (
-              <>
-                <strong>{frame.description}</strong> — reviewing history. Return to the decision to
-                answer.
-              </>
-            )}
-          </p>
+          {/* One fixed label. Swapping the text between "At the decision" and
+              "Back to the decision" changed the button's width mid-hand, and in a
+              centred flex row a width change can tip the row into wrapping and
+              move every control down with it. */}
+          <button
+            type="button"
+            className={`button button--small ${atDecision ? '' : 'button--primary'}`}
+            onClick={toDecision}
+            disabled={atDecision}
+            title="Escape"
+          >
+            Back to the decision
+          </button>
 
           {answered && (
-            <label className="field field--check">
+            <label className="scrub__reveal">
               <input
                 type="checkbox"
                 checked={revealAll}
                 onChange={(event) => setRevealAll(event.target.checked)}
               />
-              <span>Reveal all hands</span>
+              <span>All hands</span>
             </label>
           )}
         </div>
       )}
 
-      <section className="puzzle__decision">
-        <h2 className="puzzle__prompt">{PROMPTS[puzzle.kind]}</h2>
+      {/* Only while the question is still open. Once answered, the feedback panel
+          says everything this did, and leaving it up just pushed the answer
+          further down the page. */}
+      {!answered && (
+        <section className="ask">
+          <h2 className="ask__prompt">{PROMPTS[puzzle.kind]}</h2>
 
-        {puzzle.kind !== 'discard' && !answered && (
-          <div className="actionbar">
-            {puzzle.actions.map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                className="button"
-                onClick={() => onAnswer(action.id)}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {!answered && puzzle.kind === 'discard' && (
-          <p className="puzzle__hint">
-            {atDecision
-              ? 'Click a tile in your hand, at the bottom of the table.'
-              : 'Return to the decision to answer.'}
-          </p>
-        )}
-      </section>
+          {puzzle.kind === 'discard' ? (
+            <p className="ask__hint">
+              {atDecision ? 'Pick a tile from your hand.' : 'Return to the decision to answer.'}
+            </p>
+          ) : (
+            <div className="ask__actions">
+              {puzzle.actions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className="button button--choice"
+                  onClick={() => onAnswer(action.id)}
+                  disabled={!atDecision}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {answer && <Feedback puzzle={puzzle} answer={answer} onNext={onNext} />}
     </article>
