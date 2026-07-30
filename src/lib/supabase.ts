@@ -1,18 +1,21 @@
 /**
- * Minimal Supabase (PostgREST) client.
+ * Supabase client: puzzles, auth, and attempt recording.
  *
- * Hand-rolled rather than pulling in @supabase/supabase-js: this needs three
- * GETs against a public table, and the whole point of the recent bank work was
- * to keep what the browser downloads small. If sessions and token refresh arrive
- * with user accounts, that calculus changes and the official client earns its
- * weight — hand-rolling auth would not be a good trade.
+ * The key shipped here is the *publishable* key. It is compiled into this bundle
+ * and readable by anyone, which is safe only because row-level security is
+ * enabled on every table. Verified rather than assumed: with this key, a delete
+ * against a real row reports HTTP 204 and leaves the row untouched, because RLS
+ * makes the row invisible rather than refusing the request. A check that read
+ * only the status code would have concluded the opposite.
  *
- * The key here is the *publishable* key. It is compiled into this bundle and is
- * readable by anyone, which is safe only because row-level security is enabled
- * on every table and grants nothing but select. Verified rather than assumed:
- * with this key a delete against a real row reports HTTP 204 and leaves the row
- * untouched, because RLS makes it invisible rather than refusing the request.
+ * PKCE is selected explicitly. The implicit OAuth flow returns tokens in the URL
+ * *fragment* (`#access_token=...`), and this app routes on the fragment too
+ * (`#/train`), so the two collide — the router would try to navigate to a route
+ * named after an access token. PKCE returns `?code=...` in the query string
+ * instead, leaving the fragment alone.
  */
+
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 
 const URL_BASE = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -24,58 +27,70 @@ export function isConfigured(): boolean {
   return Boolean(URL_BASE && PUBLISHABLE_KEY);
 }
 
-/** Which source the site should read puzzles from. */
-export function puzzleSource(): 'static' | 'supabase' {
-  const configured = (import.meta.env.VITE_PUZZLE_SOURCE as string | undefined) ?? 'static';
-  // Asking for supabase without credentials is a misconfiguration, not a
-  // request to fail: fall back rather than break the page.
-  if (configured === 'supabase' && isConfigured()) return 'supabase';
-  return 'static';
-}
+let client: Promise<SupabaseClient> | undefined;
 
-function headers(extra?: Record<string, string>): Record<string, string> {
-  return {
-    apikey: PUBLISHABLE_KEY as string,
-    Authorization: `Bearer ${PUBLISHABLE_KEY as string}`,
-    ...extra,
-  };
-}
-
-export class SupabaseError extends Error {}
-
-async function get<T>(path: string, range?: [number, number]): Promise<{ rows: T[]; total?: number }> {
-  const response = await fetch(`${URL_BASE}/rest/v1/${path}`, {
-    headers: headers(
-      range ? { Range: `${range[0]}-${range[1]}`, Prefer: 'count=exact' } : undefined,
-    ),
-  });
-  if (!response.ok) {
-    throw new SupabaseError(`${path}: ${response.status} ${response.statusText}`);
-  }
-  const rows = (await response.json()) as T[];
-  // "0-499/897" — the figure after the slash is the unfiltered total, which is
-  // how a truncated page is told apart from a complete one.
-  const total = Number(response.headers.get('content-range')?.split('/')[1]);
-  return { rows, total: Number.isFinite(total) ? total : undefined };
+/**
+ * The client, imported on first use.
+ *
+ * Loaded through a dynamic import so the library lands in its own chunk rather
+ * than the main bundle: it costs 57 kB gzipped, which is 78% on top of the
+ * entire rest of the app. A deployment serving bundled JSON to a signed-out
+ * visitor never needs it, and should not pay for it — the same reasoning that
+ * kept the puzzle bank small. Signing in, or reading puzzles from the database,
+ * fetches it then.
+ *
+ * The type-only import above is erased at build time, so it does not pull the
+ * library into the main chunk.
+ */
+export async function supabase(): Promise<SupabaseClient> {
+  if (!isConfigured()) throw new Error('Supabase is not configured');
+  client ??= import('@supabase/supabase-js').then(({ createClient }) =>
+    createClient(URL_BASE as string, PUBLISHABLE_KEY as string, {
+      auth: {
+        flowType: 'pkce',
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    }),
+  );
+  return client;
 }
 
 /**
- * Fetch every row of a table, paging until the server says we have them all.
+ * Whether this browser could possibly have a session, without loading the client.
  *
- * Deliberately not a single request with a large limit: PostgREST applies its
- * own maximum, so one request returns a silently truncated page once the table
- * outgrows it. That would look exactly like a smaller bank.
+ * supabase-js persists its session in localStorage under `sb-<ref>-auth-token`.
+ * If no such key exists the visitor is definitely signed out, and asking the
+ * library to confirm that would mean downloading 57 kB to learn nothing. The
+ * PKCE callback also leaves a code verifier there, and arrives with `?code=` in
+ * the query string, so both cases still load the client.
+ *
+ * Wrong only in the safe direction: a stale or expired token loads the client and
+ * resolves to signed out, which is the same outcome by a slower route.
  */
-async function getAll<T>(path: string): Promise<T[]> {
-  const out: T[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { rows, total } = await get<T>(path, [offset, offset + PAGE_SIZE - 1]);
-    out.push(...rows);
-    if (rows.length === 0) break;
-    if (total !== undefined && out.length >= total) break;
-    if (rows.length < PAGE_SIZE) break;
+export function mayHaveSession(): boolean {
+  if (!isConfigured()) return false;
+  try {
+    if (new URLSearchParams(window.location.search).has('code')) return true;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.includes('-auth-token')) return true;
+    }
+  } catch {
+    // Storage can be unavailable (private mode, blocked cookies). Assume no
+    // session rather than failing; signing in still works on demand.
   }
-  return out;
+  return false;
+}
+
+/** Which source the site should read puzzles from. */
+export function puzzleSource(): 'static' | 'supabase' {
+  const configured = (import.meta.env.VITE_PUZZLE_SOURCE as string | undefined) ?? 'static';
+  // Asking for supabase without credentials is a misconfiguration, not a request
+  // to fail: fall back rather than break the page.
+  if (configured === 'supabase' && isConfigured()) return 'supabase';
+  return 'static';
 }
 
 /** A puzzles row, as the table stores it. */
@@ -95,7 +110,7 @@ interface PuzzleRow {
   history: unknown;
 }
 
-interface BankMetaRow {
+export interface BankMetaRow {
   schema_version: number;
   generated_at: string;
   provenance: string;
@@ -121,13 +136,160 @@ function fromRow(row: PuzzleRow): Record<string, unknown> {
   return puzzle;
 }
 
+/**
+ * Every puzzle, paged.
+ *
+ * Deliberately not one request with a large limit: PostgREST applies its own
+ * maximum, so a single request silently returns a truncated page once the table
+ * outgrows it — which looks exactly like a smaller bank rather than an error.
+ */
 export async function fetchPuzzles(): Promise<Record<string, unknown>[]> {
-  const rows = await getAll<PuzzleRow>('puzzles?select=*&order=id');
-  return rows.map(fromRow);
+  const out: Record<string, unknown>[] = [];
+  const db = await supabase();
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await db
+      .from('puzzles')
+      .select('*')
+      .order('id')
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(`puzzles: ${error.message}`);
+    if (!data || data.length === 0) break;
+    out.push(...(data as PuzzleRow[]).map(fromRow));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return out;
 }
 
 export async function fetchBankMeta(): Promise<BankMetaRow> {
-  const { rows } = await get<BankMetaRow>('bank_meta?select=*&limit=1');
-  if (!rows.length) throw new SupabaseError('bank_meta is empty');
-  return rows[0];
+  const db = await supabase();
+  const { data, error } = await db.from('bank_meta').select('*').limit(1).single();
+  if (error) throw new Error(`bank_meta: ${error.message}`);
+  return data as BankMetaRow;
+}
+
+// -- auth --------------------------------------------------------------------
+
+export async function currentSession(): Promise<Session | null> {
+  if (!isConfigured()) return null;
+  const db = await supabase();
+  const { data } = await db.auth.getSession();
+  return data.session;
+}
+
+/**
+ * Subscribe to sign-in and sign-out.
+ *
+ * Returns a synchronous unsubscribe even though the client loads asynchronously,
+ * so a component that mounts and unmounts before the chunk arrives still tears
+ * down cleanly instead of leaking a subscription.
+ */
+export function onAuthChange(handler: (session: Session | null) => void): () => void {
+  if (!isConfigured()) return () => {};
+  let cancelled = false;
+  let unsubscribe: (() => void) | undefined;
+
+  void supabase()
+    .then((db) => {
+      if (cancelled) return;
+      const { data } = db.auth.onAuthStateChange((_event, session) => handler(session));
+      unsubscribe = () => data.subscription.unsubscribe();
+    })
+    .catch(() => {
+      // Never surfaced: no session simply means signed out.
+    });
+
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
+}
+
+/**
+ * Whether the project actually has Google configured.
+ *
+ * signInWithOAuth does not check — it redirects the browser straight to the
+ * authorize endpoint, so a project with the provider switched off dumps the user
+ * on a raw JSON error page with no way back. Asking first turns that into a
+ * message beside the button.
+ */
+export async function googleEnabled(): Promise<boolean> {
+  if (!isConfigured()) return false;
+  try {
+    const response = await fetch(`${URL_BASE}/auth/v1/settings`, {
+      headers: { apikey: PUBLISHABLE_KEY as string },
+    });
+    if (!response.ok) return false;
+    const settings = (await response.json()) as { external?: Record<string, boolean> };
+    return Boolean(settings.external?.google);
+  } catch {
+    return false;
+  }
+}
+
+export async function signInWithGoogle(): Promise<void> {
+  if (!(await googleEnabled())) {
+    throw new Error('Google sign-in is not enabled for this project yet.');
+  }
+  // Return to the training view rather than wherever the flow started, so the
+  // redirect never lands on a puzzle the solver has already answered.
+  const redirectTo = `${window.location.origin}${window.location.pathname}#/train`;
+  const db = await supabase();
+  const { error } = await db.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function signOut(): Promise<void> {
+  const db = await supabase();
+  await db.auth.signOut();
+}
+
+// -- attempts ----------------------------------------------------------------
+
+export interface RecordedAttempt {
+  puzzleId: string;
+  actionId: string;
+  elapsedMs?: number;
+}
+
+/**
+ * Record one answered puzzle.
+ *
+ * Note what is *not* sent: whether it was correct, the loss, or the grade. A
+ * database trigger derives all three from the puzzle's own accept set and
+ * discards anything the client claims, so a forged "I solved it" is stored as
+ * the miss it actually was. Signing in does not make a client honest — a
+ * signed-in user can lie exactly as easily as an anonymous one — so the check
+ * lives server-side.
+ */
+export async function recordAttempt(attempt: RecordedAttempt): Promise<void> {
+  const session = await currentSession();
+  if (!session) return;
+  const db = await supabase();
+  const { error } = await db.from('attempts').insert({
+    user_id: session.user.id,
+    puzzle_id: attempt.puzzleId,
+    action_id: attempt.actionId,
+    elapsed_ms: attempt.elapsedMs ?? null,
+  });
+  if (error) throw new Error(`attempts: ${error.message}`);
+}
+
+export interface RemoteProgress {
+  attempts: number;
+  correct: number;
+  puzzles_seen: number;
+  mean_loss: number | null;
+  last_attempt_at: string | null;
+}
+
+export async function fetchMyProgress(): Promise<RemoteProgress | null> {
+  const session = await currentSession();
+  if (!session) return null;
+  const db = await supabase();
+  const { data, error } = await db.from('my_progress').select('*').maybeSingle();
+  if (error) throw new Error(`my_progress: ${error.message}`);
+  return (data as RemoteProgress) ?? null;
 }

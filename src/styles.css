@@ -143,6 +143,44 @@ code {
   color: var(--accent-contrast);
 }
 
+/* Account control. Absent entirely when the deployment has no Supabase
+   credentials, so the static build keeps its original header. */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Holds the row's height while the first session lookup resolves, so the header
+   does not jump once it does. */
+.account--pending {
+  display: block;
+  min-height: 1.9rem;
+  min-width: 8rem;
+}
+
+.account__name {
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__error {
+  font-size: 0.78rem;
+  color: var(--bad, #b4361f);
+  max-width: 18rem;
+}
+
+.button--small {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+}
+
 .main {
   display: flex;
   flex-direction: column;

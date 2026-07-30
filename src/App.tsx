@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { About } from './components/About';
+import { AccountButton } from './components/AccountButton';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
 import { ReplayView } from './components/ReplayView';
@@ -13,6 +14,9 @@ import {
   saveProgress,
   type Progress,
 } from './lib/progress';
+// Aliased: `recordAttempt` above writes to localStorage, this one to the
+// database. They are not alternatives — both run for a signed-in solver.
+import { recordAttempt as recordRemoteAttempt } from './lib/supabase';
 import type { Puzzle } from './types/puzzle';
 
 type View = 'train' | 'replay' | 'progress' | 'about';
@@ -84,6 +88,16 @@ export default function App() {
       if (!current || answer) return;
       const graded = gradeAnswer(current, actionId);
       setAnswer(graded);
+
+      // Mirror the attempt to the database when signed in. Deliberately not
+      // awaited and never surfaced: local progress is the source of truth for
+      // the session, so a network failure here must not delay the feedback panel
+      // or lose the local record. The server recomputes correctness itself, so
+      // nothing about the grade is trusted from here.
+      void recordRemoteAttempt({ puzzleId: current.id, actionId }).catch((cause) => {
+        console.warn('[attempts] not recorded remotely:', cause);
+      });
+
       setProgress((previous) => {
         const next = recordAttempt(
           previous,
@@ -154,6 +168,7 @@ export default function App() {
             Method
           </a>
         </nav>
+        <AccountButton />
       </header>
 
       <main className="main">
