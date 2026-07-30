@@ -112,9 +112,51 @@ class ExtractTest(unittest.TestCase):
         self.assertEqual(sorted(third["melds"][0]["tiles"]), ["E", "E", "E"])
 
     def test_meld_is_visible_to_all_seats(self):
+        # Seat 2 called, and this record is seat 2's own decision, so its meld
+        # belongs in `melds`. Every other seat's slot is empty here because no
+        # other seat has called.
         third = self.records[2]["position"]
-        self.assertEqual(len(third["opponentMelds"][2]), 1)
-        self.assertEqual(third["opponentMelds"][0], [])
+        self.assertEqual(third["seat"], 2)
+        self.assertEqual(len(third["melds"]), 1)
+        for seat in range(4):
+            self.assertEqual(third["opponentMelds"][seat], [], "seat {}".format(seat))
+
+        # From another seat's point of view the same meld is an opponent's.
+        first = self.records[0]["position"]
+        self.assertEqual(first["seat"], 0)
+        self.assertEqual(first["opponentMelds"][0], [])
+
+    def test_own_meld_is_not_counted_twice(self):
+        """The acting seat's melds appear in `melds` only.
+
+        Listing them in `opponentMelds[seat]` as well put six copies of a ponned
+        tile into 230 of 897 exported positions, and understated acceptance for
+        those tiles, because the site counts visible tiles across all four meld
+        slots.
+        """
+        for record in self.records:
+            position = record["position"]
+            seat = position["seat"]
+            self.assertEqual(
+                position["opponentMelds"][seat],
+                [],
+                "seat {} duplicates its own melds".format(seat),
+            )
+
+            counts = {}
+            for tile in position["hand"]:
+                counts[tile] = counts.get(tile, 0) + 1
+            for group in [position["melds"]] + list(position["opponentMelds"]):
+                for meld in group:
+                    for tile in meld["tiles"]:
+                        counts[tile] = counts.get(tile, 0) + 1
+            for river in position["rivers"]:
+                for tile in river:
+                    counts[tile] = counts.get(tile, 0) + 1
+            for tile in position["doraIndicators"]:
+                counts[tile] = counts.get(tile, 0) + 1
+            for tile, count in counts.items():
+                self.assertLessEqual(count, 4, "{} appears {} times".format(tile, count))
 
     def test_final_placement_labels(self):
         placements = {record["actor"]: record["finalPlacement"] for record in self.records}

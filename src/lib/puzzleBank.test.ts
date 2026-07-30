@@ -11,8 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { shanten } from './shanten';
-import { analyzeDiscards } from './ukeire';
+import { analyzePosition } from './analyzePosition';
 import { NUM_TILE_TYPES, tileToIndex } from './tiles';
 import { bestAction, describeLoss, gradeAnswer } from './grade';
 import { SCHEMA_VERSION, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
@@ -120,7 +119,9 @@ describe('puzzle bank contents', () => {
     }
   });
 
-  it('marks exactly the zero-loss actions as accepted', () => {
+  // The efficiency bank uses epsilon 0, so this was "exactly the zero-loss
+  // actions". With placement points the accept band is a real epsilon.
+  it('accepts exactly the actions within epsilon of the best', () => {
     for (const puzzle of puzzles) {
       for (const action of puzzle.actions) {
         const shouldAccept = action.loss <= puzzle.evaluation.epsilon;
@@ -182,6 +183,10 @@ describe('puzzle bank contents', () => {
       for (const action of puzzle.actions) {
         if (action.shantenAfter === undefined) continue;
         if (action.shantenAfter <= puzzle.bestShanten) continue;
+        // A regressing action can be the *best* one: under an EV evaluator,
+        // folding into a threat costs shanten and is sometimes correct. There is
+        // no loss to describe in that case.
+        if (action.loss <= 0) continue;
         const described = describeLoss(action, puzzle.evaluation.unit, puzzle.bestShanten);
         expect(described, `${puzzle.id} ${action.id}`).toContain('shanten');
       }
@@ -191,9 +196,27 @@ describe('puzzle bank contents', () => {
   it('offers a real choice among discards that hold the best shanten', () => {
     for (const puzzle of puzzles) {
       if (puzzle.bestShanten === undefined) continue;
+      // Efficiency drills only. When the evaluator is placement points, breaking
+      // the hand can be the *right* answer — folding into a threat is exactly the
+      // kind of decision an EV search can express and tile counting cannot — so
+      // requiring three non-regressing discards would throw away the puzzles the
+      // stronger evaluator exists to find.
+      if (puzzle.evaluation.unit !== 'ukeire_tiles') continue;
       const tier = puzzle.actions.filter((action) => action.shantenAfter === puzzle.bestShanten);
       // Fewer than three and the drill degenerates into "do not break your hand".
       expect(tier.length, `${puzzle.id} has only ${tier.length} non-regressing discards`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('offers a real choice, and not every answer is correct', () => {
+    for (const puzzle of puzzles) {
+      // The invariant that survives any evaluator: there is something to choose
+      // between, and choosing wrong is possible.
+      expect(puzzle.actions.length, `${puzzle.id}`).toBeGreaterThanOrEqual(2);
+      expect(
+        puzzle.acceptedActionIds.length,
+        `${puzzle.id} accepts every action, so it teaches nothing`,
+      ).toBeLessThan(puzzle.actions.length);
     }
   });
 
@@ -228,41 +251,26 @@ describe('puzzle bank contents', () => {
 });
 
 describe('bank answers match a fresh ukeire computation', () => {
-  it('recomputes the same best discards', () => {
+  it('recomputes the same best discards for efficiency puzzles', () => {
+    // Only meaningful where ukeire *is* the evaluator. An akochan-scored bank has
+    // no such puzzles, and asserting a non-empty set here would fail for a
+    // legitimate reason.
     const seeds = puzzles.filter((puzzle) => puzzle.evaluation.unit === 'ukeire_tiles');
-    expect(seeds.length).toBeGreaterThan(0);
 
     for (const puzzle of seeds) {
-      const { position } = puzzle;
-      const counts = new Array<number>(NUM_TILE_TYPES).fill(0);
-      for (const tile of position.hand) counts[tileToIndex(tile)] += 1;
-
-      // Must mirror the generator exactly: everything the acting player can see.
-      const visible = new Array<number>(NUM_TILE_TYPES).fill(0);
-      for (const tile of position.hand) visible[tileToIndex(tile)] += 1;
-      for (const meld of position.melds) {
-        for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
-      }
-      for (const melds of position.opponentMelds) {
-        for (const meld of melds) {
-          for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
-        }
-      }
-      for (const river of position.rivers) {
-        for (const tile of river) visible[tileToIndex(tile)] += 1;
-      }
-      for (const tile of position.doraIndicators) visible[tileToIndex(tile)] += 1;
-
-      const meldCount = Math.min(4, position.melds.length) as 0 | 1 | 2 | 3 | 4;
-      const options = analyzeDiscards(counts, meldCount, visible);
-      const bestShanten = options[0].shantenAfter;
-      const bestUkeire = options[0].ukeire;
+      const analysis = analyzePosition(puzzle.position);
+      expect(analysis, `${puzzle.id} is not a discard problem`).toBeDefined();
+      if (!analysis) continue;
 
       // Compare by tile index, since the stored action names whichever copy the
       // hand actually holds — plain or red.
       const recomputedBest = new Set(
-        options
-          .filter((option) => option.shantenAfter === bestShanten && option.ukeire === bestUkeire)
+        analysis.options
+          .filter(
+            (option) =>
+              option.shantenAfter === analysis.bestShanten &&
+              option.ukeire === analysis.bestUkeire,
+          )
           .map((option) => tileToIndex(option.tile)),
       );
       const storedBest = new Set(
@@ -270,9 +278,37 @@ describe('bank answers match a fresh ukeire computation', () => {
       );
 
       expect(storedBest, `${puzzle.id}`).toEqual(recomputedBest);
-      // Hands are filtered to a solvable range at generation time.
-      expect(shanten(counts, meldCount)).toBeLessThanOrEqual(2);
+      expect(analysis.currentShanten).toBeLessThanOrEqual(2);
     }
+  });
+
+  it('recomputes the same shanten and acceptance for every stored action', () => {
+    // Applies whatever the evaluator is. The EV comes from akochan, but the
+    // shanten and acceptance figures shown beside it are computed here, and this
+    // checks they survived the pipeline unchanged — including the visibility
+    // accounting, which is where a duplicated meld silently understated
+    // acceptance in 230 of 897 positions.
+    let checked = 0;
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'discard') continue;
+      const analysis = analyzePosition(puzzle.position);
+      if (!analysis) continue;
+
+      const byIndex = new Map(
+        analysis.options.map((option) => [tileToIndex(option.tile), option]),
+      );
+      for (const action of puzzle.actions) {
+        if (action.shantenAfter === undefined || action.ukeire === undefined) continue;
+        if (!action.tile) continue;
+        const fresh = byIndex.get(tileToIndex(action.tile));
+        expect(fresh, `${puzzle.id} ${action.id} has no fresh option`).toBeDefined();
+        if (!fresh) continue;
+        expect(action.shantenAfter, `${puzzle.id} ${action.id} shanten`).toBe(fresh.shantenAfter);
+        expect(action.ukeire, `${puzzle.id} ${action.id} ukeire`).toBe(fresh.ukeire);
+        checked += 1;
+      }
+    }
+    expect(checked, 'no actions carried shanten/acceptance to check').toBeGreaterThan(0);
   });
 });
 

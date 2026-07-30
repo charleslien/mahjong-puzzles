@@ -62,22 +62,50 @@ puzzles.
       `layout_version` and tensor shapes against `features.py`, scores legal
       discards. A layout mismatch does not crash, it silently scores garbage, so
       the guard refuses rather than warns.
-- [ ] Attach the ukeire baseline per position for the naive-disagreement filter.
-      The TS implementation in `src/lib/ukeire.ts` is the reference; either port
-      it or shell out to `vite-node`.
+- [x] Attach the ukeire baseline per position for the naive-disagreement filter.
+      Done by `scripts/annotate-ukeire.ts`, shelling out to the tested TS
+      implementation rather than porting it. A Python port would mean a second
+      copy of the subtlest code in the project, free to drift from the one that
+      has a brute-force reference test.
+- [x] `--stride`, so a bank is not drawn from a handful of games and the opening
+      turns of each.
 
-## 4. `verify.py` — not implemented
+## 4. `verify.py` — done
 
-Blocked on an akochan build and an mjai bridge.
+- [x] Build akochan. `scripts/build-akochan.sh`. Two upstream assumptions have
+      expired: `-lboost_system` names a library that no longer exists
+      (Boost.System went header-only in 1.69, stub dropped by 1.90), and
+      `io_service` / `address::from_string` / `buffer_cast` were removed in 1.87.
+      The latter three are only used by akochan's TcpClient, a path this project
+      never takes, so Boost is pinned to 1.85 rather than rewriting upstream's
+      socket code to satisfy a compiler for code we do not run.
+- [x] Subprocess bridge. `pipeline/akochan.py`. Not `mjai_client.cpp` — that is
+      the TCP path. akochan's `mjai_log` and `pipe_detailed` modes both work over
+      files and stdio, no networking involved.
+- [x] Replay a real log to the decision, using an `eventIndex` recorded by
+      extract.py. A *synthetic* stream would mean inventing three concealed hands
+      and a wall, which changes the number of unseen tiles and therefore changes
+      the EV, so nothing is invented.
+- [x] **Throughput measured: ~5 positions/s**, so a 2,000-position batch is
+      about 7 minutes. The unknown that mattered was not the per-game figure but
+      which mode to use: `pipe_detailed` evaluates *every* decision in the stream
+      it is fed, so a position deep in a hanchan costs 80s, while `mjai_log`
+      evaluates one and costs 0.37s. A 218x difference for identical output.
 
-- [ ] Build akochan (`make`, needs libboost_system).
-- [ ] Subprocess bridge over mjai stdin/stdout using `mjai_client.cpp`.
-- [ ] Reconstruct a legal mjai event stream from a stored position. Replay from
-      `start_kyoku` — akochan expects a game in progress, not an injected
-      mid-hand state. This is the fiddly part.
-- [ ] Measure throughput before committing to a target bank size. mjai-reviewer
-      quotes 10-60 min per *game*; the per-*position* cost is unknown and decides
-      whether verifying 50k positions is a weekend or a month.
+**Two ways to get plausible wrong numbers**, both now guarded and both worth
+knowing about before touching this code:
+
+1. akochan reads `params/` relative to the working directory. Started elsewhere
+   it reads none, does not complain, and returns confident nonsense. `probe()`
+   checks a known position yields a spread of EVs rather than trusting an exit
+   code — a check on the exit code alone would have passed.
+2. akochan's EVs are denominated in whatever `jun_pt` its tactics declare, and
+   `mjai_log` *ignores its command-line tactics argument* and loads the hardcoded
+   `setup_mjai.json`. That is how the fast path came to run on upstream's
+   [90, 30, -30, -90] while the reference path used the trained
+   [90, 45, 0, -135]. Changing `jun_pt` is not a rescaling: the objective changes,
+   so the ranking changes with it — in one test position the 2nd and 3rd best
+   discards swapped. `test_akochan.py` pins the two paths to agree bit-for-bit.
 
 ## 5. `export.py` — done
 
@@ -85,14 +113,40 @@ Emits sharded JSON against the site schema, carries CC BY attribution into
 `provenance`. Tested for loss/EV consistency, accept-set flags, sharding and
 index integrity.
 
-## 6. Wiring
+## 6. Wiring — done
 
-- [ ] Replace the synthetic seed bank in `public/puzzles/` with the mined bank.
-      The site reads whatever `index.json` points at, so this is a data swap, not
-      a code change. Keep the unit tag correct: mined puzzles are
-      `placement_pt`, seed drills are `ukeire_tiles`.
+- [x] Replace the ukeire bank in `public/puzzles/` with the mined, akochan-verified
+      bank. `./scripts/run-pipeline.sh` runs the whole chain.
+- [x] Recalibrate the grading thresholds. The `placement_pt` bounds were guessed
+      before any real EVs existed, at 0.5/1.2/3.0, which put **62% of every wrong
+      answer in "blunder"**. Measured over 2,889 non-accepted actions the losses
+      run far larger (median 4.2, p75 8.1, p90 13.2), so the bounds are now
+      2/5/12 and `grade.test.ts` pins them against that distribution.
 - [ ] Consider keeping both banks and letting users pick, since efficiency drills
-      are useful in their own right.
+      are useful in their own right. Deliberately not done: two evaluators in one
+      session means the same position type is graded to two different standards,
+      and the ukeire bank's "best" is often not akochan's. Reversible — the site
+      reads whatever `index.json` points at, and `evaluation.unit` is per puzzle,
+      so both banks can coexist behind a picker whenever that is wanted.
+
+## 7. Remaining
+
+- [ ] **Post-call discards cannot be verified.** akochan evaluates when the seat
+      draws, or when another seat discards or adds to a pon — a discard made
+      immediately after the seat's *own* call matches none of those, so it returns
+      nothing. ~6% of candidates are rejected as `no_akochan_decision_point`.
+      Fixing it means finding an akochan entry point that accepts an arbitrary
+      decision, or reconstructing the call as a `dahai` by the previous seat.
+- [ ] **Call and push/fold puzzle kinds are still unpopulated.** Declined calls
+      are invisible in mjai logs, so extract.py never sees them. akochan already
+      returns EVs for call options (they arrive with `tile: null` and are
+      currently discarded in `akochan._parse`), so the evaluator side is ready;
+      the gap is entirely in extraction.
+- [ ] **Redact opponents' hands from shipped `history`.** Real logs carry every
+      seat's tiles. The board never renders them before an answer, but they are in
+      the JSON. Redaction has to keep tile *counts* intact or the replay cannot
+      draw the right number of backs, and it would remove the "Reveal all hands"
+      review feature, so it is a genuine trade rather than an oversight.
 
 ## Deliberately not planned
 

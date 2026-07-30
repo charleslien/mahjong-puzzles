@@ -55,25 +55,47 @@ coverage is not the binding constraint when 2.5M games are available.
 ## Stages
 
 ```
-fetch_dataset.py   download houou mjai logs (CC BY 4.0) for a year range
-extract.py         mjai logs -> decision records (position + action taken)
-mine.py            rank candidates by disagreement and margin, using the model
-verify.py          re-score survivors with akochan; drop disagreements
-export.py          emit public/puzzles/*.json against the site schema
+extract.py                  mjai logs -> decision records (position + action taken)
+train.py                    fit the candidate-finding network on those records
+mine.py                     rank legal discards with the model
+../scripts/annotate-ukeire  attach the tile-efficiency baseline (TypeScript)
+akochan.py / verify.py      re-score with akochan; drop disagreements
+export.py                   emit public/puzzles/*.json against the site schema
 ```
 
-Each stage reads and writes JSONL under `data/`, so stages are independently
-resumable and inspectable. `data/` is gitignored — the full dump is ~12GB.
+Run the whole chain with `../scripts/run-pipeline.sh`, which is also the record of
+the exact invocations. Each stage reads and writes JSONL under `data/`, so stages
+are independently resumable and inspectable. `data/` is gitignored — the full dump
+is ~12GB.
+
+One stage is TypeScript in an otherwise Python pipeline. The shanten and ukeire
+implementations live in `src/lib`, are covered by a brute-force reference test,
+and are checked against the shipped bank; porting them would mean maintaining a
+second copy of the subtlest code in the project and hoping the two never diverge.
 
 ## Status
 
-`extract.py` and `export.py` are implemented and tested. `mine.py` and
-`verify.py` define their interfaces and scoring criteria but the model training
-and the akochan subprocess bridge are **not yet built** — they are the next piece
-of work, and they are what the site needs before it can ship anything beyond
-efficiency drills.
+Complete and shipping. The bank in `public/puzzles/` is mined from games held out
+of training, scored by akochan in Tenhou houou placement points, and corroborated
+by the model.
 
-See `TODO.md` for exactly what remains.
+Measured: **~5 positions/s** through akochan, and of 2,113 annotated candidates
+897 were published — 31% rejected for too small a margin, **14% because the two
+evaluators disagreed on the best action**, 5% for having no akochan decision
+point, 5% for too many equally good answers, and 2% for being too deep in the
+endgame.
+
+`TODO.md` covers what remains: post-call discards have no akochan decision point,
+call and push/fold kinds are still unpopulated, and shipped history is
+unredacted.
+
+## A warning about akochan
+
+Three of its behaviours produce plausible wrong numbers rather than errors, so
+nothing here trusts an exit code. See the docstring in `akochan.py`; the short
+version is that it reads `params/` relative to the working directory, its EVs are
+denominated in whatever `jun_pt` its tactics declare, and its `mjai_log` mode
+ignores the tactics path you pass it.
 
 ## Data
 

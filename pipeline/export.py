@@ -21,9 +21,12 @@ DEFAULT_SHARD_SIZE = 250
 
 ATTRIBUTION = (
     "Positions mined from Tenhou houou-room logs redistributed by tenhou-to-mjai "
-    "under CC BY 4.0. Evaluated offline by an imitation/offline-RL model and "
-    "corroborated by akochan expected-value search; positions where the two "
-    "evaluators disagreed on the best action were discarded rather than published."
+    "under CC BY 4.0, from games held out of model training. Expected values are "
+    "computed by akochan's expected-value search in Tenhou houou placement points "
+    "(+90/+45/0/-135); candidates are found by a 2.2M-parameter imitation network "
+    "trained on 20M houou decisions, which also supplies the corroborating "
+    "ranking. Positions where the two evaluators disagreed on the best action "
+    "were discarded rather than adjudicated."
 )
 
 
@@ -158,7 +161,14 @@ def write_bank(
         chunk = list(puzzles[start : start + shard_size])
         name = "{}-{:03d}.json".format(shard_prefix, start // shard_size)
         with open(os.path.join(out_dir, name), "w", encoding="utf-8") as handle:
-            json.dump({"schemaVersion": SCHEMA_VERSION, "puzzles": chunk}, handle, indent=2)
+            # Compact: shards are fetched and parsed by the browser, never read by
+            # a person, and the whole bank is loaded at once. Pretty-printing cost
+            # 6.9 MB of indentation across 897 puzzles — more than the puzzles.
+            json.dump(
+                {"schemaVersion": SCHEMA_VERSION, "puzzles": chunk},
+                handle,
+                separators=(",", ":"),
+            )
             handle.write("\n")
         shards.append(
             {

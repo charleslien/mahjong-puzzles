@@ -16,12 +16,25 @@ import type { EvalUnit, Puzzle, PuzzleAction } from '../types/puzzle';
 
 export type Grade = 'optimal' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
-/** Upper bound of loss for each grade, keyed by unit. */
+/**
+ * Upper bound of loss for each grade, keyed by unit.
+ *
+ * The placement-point bounds are calibrated against the distribution akochan
+ * actually produces, measured over 2,889 non-accepted actions in the mined bank:
+ * median loss 4.2 points, p75 8.1, p90 13.2. They were originally guessed at
+ * 0.5/1.2/3.0, which put 62% of every wrong answer in "blunder" and made the
+ * scale useless — the guess assumed placement-point losses would be small, and
+ * they are not. These bounds spread the same population roughly evenly.
+ *
+ * Note the two units are on genuinely different scales and neither is a rescaling
+ * of the other: a shanten regression is worth a fixed penalty in tiles, while
+ * akochan prices folding correctly as a *gain*.
+ */
 const THRESHOLDS: Record<EvalUnit, Array<{ grade: Grade; maxLoss: number }>> = {
   placement_pt: [
-    { grade: 'good', maxLoss: 0.5 },
-    { grade: 'inaccuracy', maxLoss: 1.2 },
-    { grade: 'mistake', maxLoss: 3.0 },
+    { grade: 'good', maxLoss: 2.0 },
+    { grade: 'inaccuracy', maxLoss: 5.0 },
+    { grade: 'mistake', maxLoss: 12.0 },
   ],
   ukeire_tiles: [
     { grade: 'good', maxLoss: 2 },
@@ -111,6 +124,12 @@ export function formatLoss(loss: number, unit: EvalUnit): string {
  * regression at a large fixed penalty, so printing it as a tile count would be a
  * lie. When an action worsens shanten, say so; only report an acceptance gap
  * between actions that reach the same shanten.
+ *
+ * Placement points have no such problem — akochan really does price a regression
+ * at the figure it reports — so the number is shown, with the regression noted
+ * alongside it. That the hand went backwards is the more useful fact, and unlike
+ * the efficiency case it is not the *whole* story: folding into a threat costs
+ * shanten and can still be the best action available.
  */
 export function describeLoss(
   action: Pick<PuzzleAction, 'loss' | 'shantenAfter'>,
@@ -119,14 +138,21 @@ export function describeLoss(
 ): string {
   if (action.loss <= 0) return 'best';
 
-  if (unit === 'ukeire_tiles' && bestShanten !== undefined && action.shantenAfter !== undefined) {
-    const regression = action.shantenAfter - bestShanten;
+  const regression =
+    bestShanten !== undefined && action.shantenAfter !== undefined
+      ? action.shantenAfter - bestShanten
+      : 0;
+
+  if (unit === 'ukeire_tiles') {
     if (regression > 0) {
       return regression === 1 ? '−1 shanten' : `−${regression} shanten`;
     }
     return `−${Math.round(action.loss)} tiles`;
   }
 
+  if (regression > 0) {
+    return `${formatLoss(action.loss, unit)}, −${regression} shanten`;
+  }
   return formatLoss(action.loss, unit);
 }
 

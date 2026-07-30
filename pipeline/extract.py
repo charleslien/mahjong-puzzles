@@ -198,7 +198,16 @@ class GameState:
             "drawnTile": self.last_draw[seat],
             "melds": [dict(meld) for meld in self.melds[seat]],
             "rivers": [list(river) for river in self.rivers],
-            "opponentMelds": [[dict(m) for m in melds] for melds in self.melds],
+            # The acting seat's own melds live in `melds`; its slot here stays
+            # empty so the same physical tiles are never counted twice. Filling
+            # it put six copies of a ponned tile into 230 of 897 exported
+            # positions, and understated acceptance for those tiles because the
+            # site's visibility count sums all four slots. The training encoder
+            # reads only offsets 1-3, so the model was unaffected.
+            "opponentMelds": [
+                [] if other == seat else [dict(m) for m in melds]
+                for other, melds in enumerate(self.melds)
+            ],
             "riichi": list(self.riichi),
             "tilesLeft": self.tiles_left,
         }

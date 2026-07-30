@@ -2,8 +2,8 @@ import type { PuzzleIndex } from '../types/puzzle';
 
 /**
  * The methodology page. This exists because a puzzle site that grades your play
- * owes you an account of where its answers come from — especially while the bank
- * is still efficiency drills rather than AI-evaluated positions.
+ * owes you an account of where its answers come from, including the parts that
+ * are weaker than a reader might assume.
  */
 export function About({ index }: { index: PuzzleIndex }) {
   return (
@@ -43,30 +43,32 @@ export function About({ index }: { index: PuzzleIndex }) {
       <p>
         <strong>{index.count} puzzles.</strong> {index.provenance}
       </p>
-      <p className="callout">
-        These are tile-efficiency drills, not AI evaluations. They score acceptance count and nothing
-        else — no yaku, no score situation, no safety. Efficiency is also the naive baseline the AI
-        pipeline exists to disagree with, so treat this bank as scaffolding that proves the site works
-        end to end.
-      </p>
-
-      <h3>Where the real evaluations will come from</h3>
+      <h3>Where the evaluations come from</h3>
       <p>
         The strongest riichi AI, <em>Mortal</em>, does not publish its trained weights — its author
-        withheld them deliberately to avoid arming cheaters. Neither does Kanachan. So the pipeline
+        withheld them deliberately to avoid arming cheaters. Neither does Kanachan. So this pipeline
         trains its own model rather than relying on anyone's withheld or leaked weights.
       </p>
       <p>
-        Two evaluators, cross-checked. An offline-RL model trained on the CC BY 4.0 Tenhou houou
-        dataset does cheap mass mining over millions of positions. <em>akochan</em>, which is fully
-        open and needs no weights, verifies the survivors by expected-value search. On Mortal's own
-        published benchmarks akochan trails it by roughly 0.09 average placement across 110,000
-        games — a real gap, but far closer than its reputation suggests, and more than good enough to
-        corroborate a second opinion.
+        Two evaluators, cross-checked. A 2.2M-parameter network trained on 20 million houou decisions
+        does the cheap mass mining: it reaches 72.9% agreement with what houou players actually
+        discarded on games it never saw, which is what a candidate <em>finder</em> needs.{' '}
+        <em>akochan</em>, which is fully open and needs no weights, then re-scores the survivors by
+        expected-value search and supplies every number shown here. On Mortal's own published
+        benchmarks akochan trails it by roughly 0.09 average placement across 110,000 games — a real
+        gap, but far closer than its reputation suggests.
       </p>
       <p>
-        Positions where the two disagree are thrown away, not published. Kan decisions and extreme
-        endgame spots are excluded outright, since those are akochan's documented weak points.
+        Positions where the two disagree are thrown away, not published — that discarded 14% of
+        otherwise-publishable candidates. Kan decisions and extreme endgame spots are excluded
+        outright, since those are akochan's documented weak points.
+      </p>
+      <p className="callout">
+        What this does <em>not</em> mean: that the answers are ground truth. akochan is a strong
+        engine, not an oracle, and it is measurably weaker than the best AI available. Every position
+        here is a discard decision — calls and push/fold decisions are not yet mined, because declining
+        a call leaves no trace in a game log to learn from. Difficulty is derived from the evaluation
+        rather than from whether anyone actually gets it wrong.
       </p>
 
       <h3>No model in your browser</h3>

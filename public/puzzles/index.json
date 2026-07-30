@@ -1,12 +1,33 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-07-30",
-  "provenance": "Positions are real decision points from Tenhou houou-room hanchan, redistributed by tenhou-to-mjai under CC BY 4.0, so the scores, round and hand history are genuine. Each puzzle carries the mjai events for its hand so the decision can be replayed in context. The evaluation is NOT an AI evaluation: answers are scored in tiles of acceptance by the shanten/ukeire library, ignoring yaku, score and safety. An offline-RL model plus akochan will replace the evaluator; the positions stay.",
-  "count": 220,
+  "provenance": "Positions mined from Tenhou houou-room logs redistributed by tenhou-to-mjai under CC BY 4.0, from games held out of model training. Expected values are computed by akochan's expected-value search in Tenhou houou placement points (+90/+45/0/-135); candidates are found by a 2.2M-parameter imitation network trained on 20M houou decisions, which also supplies the corroborating ranking. Positions where the two evaluators disagreed on the best action were discarded rather than adjudicated.",
+  "count": 897,
   "shards": [
     {
-      "file": "houou-000.json",
-      "count": 220,
+      "file": "mined-000.json",
+      "count": 250,
+      "kinds": [
+        "discard"
+      ]
+    },
+    {
+      "file": "mined-001.json",
+      "count": 250,
+      "kinds": [
+        "discard"
+      ]
+    },
+    {
+      "file": "mined-002.json",
+      "count": 250,
+      "kinds": [
+        "discard"
+      ]
+    },
+    {
+      "file": "mined-003.json",
+      "count": 147,
       "kinds": [
         "discard"
       ]
