@@ -116,33 +116,37 @@ export function PuzzleView({
 
       {hasHistory && (
         <div className="history">
+          <div className="history__head">
+            <h2 className="history__title">Review this hand</h2>
+            <span className="history__count">
+              move {cursor + 1} of {frames.length}
+            </span>
+          </div>
+
           <div className="history__controls">
             <button
               type="button"
               className="button"
               onClick={() => setCursor(0)}
               disabled={cursor === 0}
-              aria-label="Start of hand"
             >
-              ⏮
+              ⏮ Start
             </button>
             <button
               type="button"
               className="button"
               onClick={() => setCursor((current) => Math.max(0, current - 1))}
               disabled={cursor === 0}
-              aria-label="Previous move"
             >
-              ◀
+              ◀ Back
             </button>
             <button
               type="button"
               className="button"
               onClick={() => setCursor((current) => Math.min(decisionFrame, current + 1))}
               disabled={atDecision}
-              aria-label="Next move"
             >
-              ▶
+              Forward ▶
             </button>
             <button
               type="button"
@@ -150,31 +154,30 @@ export function PuzzleView({
               onClick={() => setCursor(decisionFrame)}
               disabled={atDecision}
             >
-              Back to the decision
+              ⏭ Back to the decision
             </button>
-
-            <input
-              className="history__scrub"
-              type="range"
-              min={0}
-              max={decisionFrame}
-              value={cursor}
-              onChange={(event) => setCursor(Number(event.target.value))}
-              aria-label="Position in the hand"
-            />
-            <span className="history__count">
-              {cursor + 1} / {frames.length}
-            </span>
           </div>
+
+          <input
+            className="history__scrub"
+            type="range"
+            min={0}
+            max={decisionFrame}
+            value={cursor}
+            onChange={(event) => setCursor(Number(event.target.value))}
+            aria-label="Position in the hand"
+          />
 
           <p className="history__line">
             {atDecision ? (
               <>
-                <strong>Your decision.</strong> Step back to see how the hand got here.
+                <strong>You are at the decision.</strong> Step back to see how the hand got here —
+                opponents' hands stay hidden until you answer.
               </>
             ) : (
               <>
-                {frame.description} — <em>reviewing history</em>
+                <strong>{frame.description}</strong> — reviewing history. Return to the decision to
+                answer.
               </>
             )}
           </p>

@@ -80,7 +80,9 @@ export function ReplayView({
   const [kyokuIndex, setKyokuIndex] = useState(0);
   const [frame, setFrame] = useState(0);
   const [viewer, setViewer] = useState<Seat>(0);
-  const [revealAll, setRevealAll] = useState(true);
+  // Concealed by default: seeing every hand is a deliberate choice, not the
+  // starting point, or the replay gives away information a player never had.
+  const [revealAll, setRevealAll] = useState(false);
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {

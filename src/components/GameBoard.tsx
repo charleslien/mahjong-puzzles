@@ -251,7 +251,7 @@ export function GameBoard({
 
   return (
     <div className="board">
-      <div className="board__felt">
+      <div className={`board__felt ${upright ? 'board__felt--upright' : ''}`}>
         {positions.map(([position, seat]) => {
           const state = snapshot.seats[seat];
           const reveal = revealAll || seat === viewer;

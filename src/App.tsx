@@ -46,9 +46,11 @@ export default function App() {
 
   const [upright, setUpright] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('mahjong-puzzles:upright') === '1';
+      // Defaults on. The turned-to-face-each-seat table is more authentic, but
+      // it makes discard order harder to follow, and this is a study tool.
+      return localStorage.getItem('mahjong-puzzles:upright') !== '0';
     } catch {
-      return false;
+      return true;
     }
   });
   const [band, setBand] = useState<(typeof DIFFICULTY_BANDS)[number]['id']>('all');

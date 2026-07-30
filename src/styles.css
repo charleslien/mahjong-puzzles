@@ -399,7 +399,7 @@ code {
   align-items: center;
   justify-items: center;
   padding: 0.85rem;
-  min-height: 460px;
+  min-height: 380px;
   background: var(--felt);
   border: 2px solid var(--felt-edge);
   border-radius: 14px;
@@ -476,6 +476,17 @@ code {
 .board__river--right {
   grid-template-rows: repeat(6, auto);
   grid-auto-flow: column;
+}
+
+/* With upright tiles, every river reads the way the page does — left to right,
+   top to bottom — rather than growing away from its owner. Per-seat flow only
+   makes sense when the tiles are also turned to face that seat; mixed together
+   it just makes the discard order hard to follow. */
+.board__felt--upright .board__river--left,
+.board__felt--upright .board__river--right {
+  grid-template-rows: none;
+  grid-template-columns: repeat(6, auto);
+  grid-auto-flow: row;
 }
 
 .board__river-empty {
@@ -1137,6 +1148,18 @@ code {
   box-shadow: var(--shadow);
 }
 
+.history__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.history__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 .history__controls {
   display: flex;
   flex-wrap: wrap;
@@ -1145,17 +1168,15 @@ code {
 }
 
 .history__scrub {
-  flex: 1;
-  min-width: 120px;
+  width: 100%;
   accent-color: var(--accent);
 }
 
 .history__count {
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  min-width: 4.5rem;
-  text-align: right;
+  white-space: nowrap;
 }
 
 .history__line {
