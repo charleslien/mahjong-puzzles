@@ -223,6 +223,11 @@ code {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+}
+
+/* Only the feedback's own call to action gets the heavier weight; changing
+   weight on a button that toggles state would resize it as it toggles. */
+.feedback > .button--primary {
   font-weight: 600;
 }
 
@@ -448,6 +453,12 @@ code {
 .board__hand--left,
 .board__hand--right {
   flex-direction: column;
+  /* Side hands stack vertically, so their height swings as the seat draws and
+     discards: 13 tiles at rest, 14 while holding a draw, fewer after a call.
+     Reserve the maximum — 14 faces plus the gaps and the drawn tile's offset —
+     or every control below the board moves on each step. */
+  min-height: calc(14 * 32px * var(--tile-scale) + 32px);
+  justify-content: flex-start;
 }
 
 .board__drawn {
@@ -461,10 +472,30 @@ code {
   margin-top: 0.4rem;
 }
 
-/* Rivers grow away from their player in blocks of six. */
+/* Rivers grow away from their player in blocks of six.
+
+   Their footprint is *reserved* rather than fitted, because a river grows from
+   nothing to three or four rows as a hand progresses. Letting it size to content
+   moved every control below the board while stepping through history. Same for
+   the side hands, which shorten by three tiles whenever a call is made. */
 .board__river {
   display: grid;
   gap: 2px;
+  align-content: start;
+}
+
+/* Tile face heights: xs 24px, sm 32px. Four rows plus gaps, scaled with the
+   felt so the reservation tracks --tile-scale. */
+.board__river--bottom {
+  min-height: calc(4 * 32px * var(--tile-scale) + 6px);
+  min-width: calc(6 * 24px * var(--tile-scale) + 10px);
+}
+
+.board__river--top,
+.board__river--left,
+.board__river--right {
+  min-height: calc(4 * 24px * var(--tile-scale) + 6px);
+  min-width: calc(6 * 18px * var(--tile-scale) + 10px);
 }
 
 .board__river--bottom,
@@ -717,6 +748,7 @@ code {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
   color: var(--text-muted);
+  min-height: 1.3em;
 }
 
 .actionbar {
@@ -1183,4 +1215,8 @@ code {
   margin: 0;
   font-size: 0.85rem;
   color: var(--text-muted);
+  /* Two full lines at this line-height, so switching between the one-line and
+     two-line message cannot change the block's height. line-height is 1.5, so a
+     line is 1.5em of the element's own font-size. */
+  min-height: 3em;
 }
