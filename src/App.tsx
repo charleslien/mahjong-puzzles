@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { About } from './components/About';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
+import { ReplayView } from './components/ReplayView';
 import { gradeAnswer, type GradedAnswer } from './lib/grade';
 import { filterPuzzles, loadBank, shuffled, type LoadedBank } from './lib/puzzleBank';
 import {
@@ -14,7 +15,7 @@ import {
 } from './lib/progress';
 import type { Puzzle } from './types/puzzle';
 
-type View = 'train' | 'progress' | 'about';
+type View = 'train' | 'replay' | 'progress' | 'about';
 
 interface Route {
   view: View;
@@ -24,6 +25,7 @@ interface Route {
 function parseHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   if (hash.startsWith('p/')) return { view: 'train', puzzleId: hash.slice(2) };
+  if (hash === 'replay') return { view: 'replay' };
   if (hash === 'progress') return { view: 'progress' };
   if (hash === 'about') return { view: 'about' };
   return { view: 'train' };
@@ -142,6 +144,9 @@ export default function App() {
           <a href="#/train" className={route.view === 'train' ? 'active' : ''}>
             Train
           </a>
+          <a href="#/replay" className={route.view === 'replay' ? 'active' : ''}>
+            Replay
+          </a>
           <a href="#/progress" className={route.view === 'progress' ? 'active' : ''}>
             Progress
           </a>
@@ -216,6 +221,8 @@ export default function App() {
             )}
           </>
         )}
+
+        {route.view === 'replay' && <ReplayView basePath={import.meta.env.BASE_URL} />}
 
         {bank && route.view === 'progress' && (
           <ProgressPanel

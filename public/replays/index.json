@@ -1,0 +1,22 @@
+{
+  "replays": [
+    {
+      "id": "sim-1",
+      "title": "Simulated game 1 (East round)",
+      "provenance": "Simulated game, not a real one. The wall, draws, discards, riichi, pon, ron (with furiten check), tsumo and exhaustive draw are all modelled, and discard choice runs through the same shanten/ukeire library the drills use. Yaku are NOT checked, so some wins shown here would be illegal at a real table, and hand scoring is not simulated at all — no point deltas are emitted rather than invented. Real Tenhou houou logs will replace these once the pipeline runs. Outcomes: E1: seat 3 wins off seat 4; E2: seat 4 wins off seat 3; E3: exhaustive draw; E4: seat 3 wins off seat 2.",
+      "file": "sim-01.json"
+    },
+    {
+      "id": "sim-2",
+      "title": "Simulated game 2 (East round)",
+      "provenance": "Simulated game, not a real one. The wall, draws, discards, riichi, pon, ron (with furiten check), tsumo and exhaustive draw are all modelled, and discard choice runs through the same shanten/ukeire library the drills use. Yaku are NOT checked, so some wins shown here would be illegal at a real table, and hand scoring is not simulated at all — no point deltas are emitted rather than invented. Real Tenhou houou logs will replace these once the pipeline runs. Outcomes: E1: seat 4 wins off seat 3; E2: seat 1 wins off seat 4; E3: seat 2 wins off seat 1; E4: seat 1 wins off seat 3.",
+      "file": "sim-02.json"
+    },
+    {
+      "id": "sim-3",
+      "title": "Simulated game 3 (full hanchan)",
+      "provenance": "Simulated game, not a real one. The wall, draws, discards, riichi, pon, ron (with furiten check), tsumo and exhaustive draw are all modelled, and discard choice runs through the same shanten/ukeire library the drills use. Yaku are NOT checked, so some wins shown here would be illegal at a real table, and hand scoring is not simulated at all — no point deltas are emitted rather than invented. Real Tenhou houou logs will replace these once the pipeline runs. Outcomes: E1: seat 2 wins off seat 3; E2: seat 1 wins by tsumo; E3: seat 3 wins off seat 4; E4: seat 4 wins off seat 1; S1: seat 2 wins off seat 4; S2: seat 2 wins off seat 3; S3: seat 3 wins off seat 4; S4: seat 3 wins by tsumo.",
+      "file": "sim-03.json"
+    }
+  ]
+}

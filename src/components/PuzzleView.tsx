@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import type { GradedAnswer } from '../lib/grade';
-import { sortTiles, type Tile } from '../lib/tiles';
+import { snapshotFromPosition } from '../lib/replay';
+import type { Tile } from '../lib/tiles';
 import type { Puzzle } from '../types/puzzle';
 import { Feedback } from './Feedback';
-import { TableView } from './TableView';
-import { TileView } from './TileView';
+import { GameBoard } from './GameBoard';
 
 const PROMPTS: Record<Puzzle['kind'], string> = {
   discard: 'Which tile do you discard?',
@@ -14,22 +14,6 @@ const PROMPTS: Record<Puzzle['kind'], string> = {
   kan: 'Do you call kan?',
   placement: 'What does the placement situation demand?',
 };
-
-/**
- * Splits the hand for display: the drawn tile is shown apart from the rest,
- * which is how it appears at the table and matters for reading the decision.
- */
-function useHandLayout(puzzle: Puzzle): { resting: Tile[]; drawn?: Tile } {
-  return useMemo(() => {
-    const { hand, drawnTile } = puzzle.position;
-    if (!drawnTile) return { resting: sortTiles(hand) };
-
-    const resting = [...hand];
-    const index = resting.indexOf(drawnTile);
-    if (index >= 0) resting.splice(index, 1);
-    return { resting: sortTiles(resting), drawn: drawnTile };
-  }, [puzzle]);
-}
 
 export function PuzzleView({
   puzzle,
@@ -46,8 +30,8 @@ export function PuzzleView({
   index: number;
   total: number;
 }) {
-  const { resting, drawn } = useHandLayout(puzzle);
   const answered = answer !== undefined;
+  const snapshot = useMemo(() => snapshotFromPosition(puzzle.position), [puzzle.position]);
 
   // After answering, every tile carries a verdict stripe.
   const accentFor = (tile: Tile): 'best' | 'good' | 'bad' | undefined => {
@@ -60,21 +44,10 @@ export function PuzzleView({
     return undefined;
   };
 
-  const handTile = (tile: Tile, key: string, isDrawn: boolean) => {
+  const onTile = (tile: Tile): void => {
+    if (answered || puzzle.kind !== 'discard') return;
     const action = puzzle.actions.find((candidate) => candidate.tile === tile);
-    const selectable = puzzle.kind === 'discard' && !answered && action !== undefined;
-    return (
-      <TileView
-        key={key}
-        tile={tile}
-        size="lg"
-        drawn={isDrawn}
-        accent={accentFor(tile)}
-        selected={answered && action?.id === answer.action.id}
-        onSelect={selectable ? () => onAnswer(action.id) : undefined}
-        describedAs={isDrawn ? 'just drawn' : undefined}
-      />
-    );
+    if (action) onAnswer(action.id);
   };
 
   return (
@@ -96,30 +69,16 @@ export function PuzzleView({
         </span>
       </header>
 
-      <TableView position={puzzle.position} />
+      <GameBoard
+        snapshot={snapshot}
+        viewer={puzzle.position.seat}
+        interactive={!answered && puzzle.kind === 'discard'}
+        onSelect={onTile}
+        accentFor={accentFor}
+      />
 
       <section className="puzzle__decision">
         <h2 className="puzzle__prompt">{PROMPTS[puzzle.kind]}</h2>
-
-        <div className="hand" role="group" aria-label="Your hand">
-          {puzzle.position.melds.length > 0 && (
-            <div className="hand__melds">
-              {puzzle.position.melds.map((meld, i) => (
-                <span className="meld" key={i}>
-                  {meld.tiles.map((tile, j) => (
-                    <TileView key={`${tile}-${j}`} tile={tile} size="lg" muted />
-                  ))}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="hand__tiles">
-            {resting.map((tile, i) => handTile(tile, `${tile}-${i}`, false))}
-          </div>
-
-          {drawn && <div className="hand__drawn">{handTile(drawn, `drawn-${drawn}`, true)}</div>}
-        </div>
 
         {/* Non-discard decisions are answered with verbs rather than tiles. */}
         {puzzle.kind !== 'discard' && !answered && (
@@ -138,7 +97,7 @@ export function PuzzleView({
         )}
 
         {!answered && puzzle.kind === 'discard' && (
-          <p className="puzzle__hint">Pick a tile from your hand.</p>
+          <p className="puzzle__hint">Click a tile in your hand, at the bottom of the table.</p>
         )}
       </section>
 
