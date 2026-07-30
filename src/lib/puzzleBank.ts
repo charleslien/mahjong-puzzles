@@ -1,9 +1,18 @@
 /**
- * Puzzle bank loading. The bank is static JSON under the site's base path, so
- * it is fetched at runtime and cached in memory for the session.
+ * Puzzle bank loading.
+ *
+ * Two sources, chosen by VITE_PUZZLE_SOURCE:
+ *
+ *   static    JSON shards under the site's base path — no backend, always works
+ *   supabase  the puzzles table, falling back to static on any failure
+ *
+ * The fallback is the point. A database outage should leave the site working
+ * exactly as it does without one, not blank the page; and a clone with no
+ * credentials behaves like the static site it has always been.
  */
 
 import { SCHEMA_VERSION, type Puzzle, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
+import { fetchBankMeta, fetchPuzzles, puzzleSource } from './supabase';
 
 function bankUrl(path: string): string {
   // BASE_URL already carries a trailing slash under Vite.
@@ -29,20 +38,53 @@ export interface LoadedBank {
 
 let cached: Promise<LoadedBank> | undefined;
 
+async function loadStaticBank(): Promise<LoadedBank> {
+  const index = await fetchJson<PuzzleIndex>('index.json');
+  if (index.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `puzzle bank schema ${index.schemaVersion} does not match app schema ${SCHEMA_VERSION}`,
+    );
+  }
+
+  const shards = await Promise.all(index.shards.map((shard) => fetchJson<PuzzleShard>(shard.file)));
+  const puzzles = shards.flatMap((shard) => shard.puzzles);
+  return { index, puzzles };
+}
+
+async function loadSupabaseBank(): Promise<LoadedBank> {
+  const [meta, rows] = await Promise.all([fetchBankMeta(), fetchPuzzles()]);
+  if (meta.schema_version !== SCHEMA_VERSION) {
+    throw new Error(
+      `puzzle bank schema ${meta.schema_version} does not match app schema ${SCHEMA_VERSION}`,
+    );
+  }
+  if (rows.length === 0) throw new Error('the puzzles table is empty');
+
+  const puzzles = rows as unknown as Puzzle[];
+  const index: PuzzleIndex = {
+    schemaVersion: SCHEMA_VERSION,
+    generatedAt: meta.generated_at,
+    provenance: meta.provenance,
+    count: puzzles.length,
+    // The database is not sharded; the field exists for the static bank's sake.
+    shards: [],
+  };
+  return { index, puzzles };
+}
+
 export function loadBank(): Promise<LoadedBank> {
   cached ??= (async () => {
-    const index = await fetchJson<PuzzleIndex>('index.json');
-    if (index.schemaVersion !== SCHEMA_VERSION) {
-      throw new Error(
-        `puzzle bank schema ${index.schemaVersion} does not match app schema ${SCHEMA_VERSION}`,
-      );
+    if (puzzleSource() === 'supabase') {
+      try {
+        return await loadSupabaseBank();
+      } catch (error) {
+        // Degrade to the bundled bank rather than showing nothing. Logged
+        // because a silent fallback would hide a broken database behind a site
+        // that looks entirely healthy.
+        console.warn('[bank] Supabase load failed, falling back to bundled JSON:', error);
+      }
     }
-
-    const shards = await Promise.all(
-      index.shards.map((shard) => fetchJson<PuzzleShard>(shard.file)),
-    );
-    const puzzles = shards.flatMap((shard) => shard.puzzles);
-    return { index, puzzles };
+    return loadStaticBank();
   })();
 
   return cached;
