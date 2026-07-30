@@ -45,7 +45,9 @@ function River({ seat, position, size }: { seat: SeatState; position: Position; 
 }
 
 function Melds({ seat, position, size }: { seat: SeatState; position: Position; size: TileSize }) {
-  if (seat.melds.length === 0) return null;
+  // Rendered even when empty. Returning null here made a seat's whole column
+  // shorter until it called something, so any call mid-hand shifted every
+  // control below the board — the row's height is reserved in CSS instead.
   return (
     <div className={`board__melds board__melds--${position}`}>
       {seat.melds.map((meld, i) => (

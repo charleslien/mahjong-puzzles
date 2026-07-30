@@ -451,6 +451,11 @@ code {
 
 .board__melds {
   gap: 0.3rem;
+  /* One row of meld tiles, always reserved. A seat gains melds partway through a
+     hand, and letting the row appear from nothing moved everything below it.
+     nowrap keeps it one row: four melds of four tiles still fit the column. */
+  flex-wrap: nowrap;
+  min-height: calc(24px * var(--tile-scale));
 }
 
 .board__meld {
@@ -582,8 +587,7 @@ code {
     --tile-scale: 0.78;
   }
 
-  .board__hand,
-  .board__melds {
+  .board__hand {
     flex-wrap: wrap;
   }
 
@@ -1136,4 +1140,21 @@ code {
      two-line message cannot change the block's height. line-height is 1.5, so a
      line is 1.5em of the element's own font-size. */
   min-height: 3em;
+}
+
+.history__keys {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
 }

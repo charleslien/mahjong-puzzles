@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GradedAnswer } from '../lib/grade';
 import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay';
@@ -81,6 +81,62 @@ export function PuzzleView({
 
   const frame = frames[Math.min(cursor, frames.length - 1)];
 
+  const stepBack = useCallback(() => setCursor((current) => Math.max(0, current - 1)), []);
+  const stepForward = useCallback(
+    () => setCursor((current) => Math.min(decisionFrame, current + 1)),
+    [decisionFrame],
+  );
+  const toStart = useCallback(() => setCursor(0), []);
+  const toDecision = useCallback(() => setCursor(decisionFrame), [decisionFrame]);
+
+  // Held in a ref so the listener can stay mounted once rather than rebinding on
+  // every cursor change.
+  const handlers = useRef({ stepBack, stepForward, toStart, toDecision, onNext, answered });
+  handlers.current = { stepBack, stepForward, toStart, toDecision, onNext, answered };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      // Leave form controls alone; the scrubber uses arrows itself.
+      if (target && ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return;
+
+      const current = handlers.current;
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault();
+          current.stepBack();
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          current.stepForward();
+          break;
+        case 'Home':
+          event.preventDefault();
+          current.toStart();
+          break;
+        case 'End':
+        case 'Escape':
+          event.preventDefault();
+          current.toDecision();
+          break;
+        case 'Enter':
+        case ' ':
+          // Only advances once the puzzle is answered, so a stray press cannot
+          // skip a puzzle unsolved.
+          if (current.answered) {
+            event.preventDefault();
+            current.onNext();
+          }
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <article className="puzzle">
       <header className="puzzle__head">
@@ -124,32 +180,36 @@ export function PuzzleView({
             <button
               type="button"
               className="button"
-              onClick={() => setCursor(0)}
+              onClick={toStart}
               disabled={cursor === 0}
+              title="Home"
             >
               ⏮ Start
             </button>
             <button
               type="button"
               className="button"
-              onClick={() => setCursor((current) => Math.max(0, current - 1))}
+              onClick={stepBack}
               disabled={cursor === 0}
+              title="Left arrow"
             >
               ◀ Back
             </button>
             <button
               type="button"
               className="button"
-              onClick={() => setCursor((current) => Math.min(decisionFrame, current + 1))}
+              onClick={stepForward}
               disabled={atDecision}
+              title="Right arrow"
             >
               Forward ▶
             </button>
             <button
               type="button"
               className={`button ${atDecision ? '' : 'button--primary'}`}
-              onClick={() => setCursor(decisionFrame)}
+              onClick={toDecision}
               disabled={atDecision}
+              title="End or Escape"
             >
               ⏭ Back to the decision
             </button>
@@ -164,6 +224,16 @@ export function PuzzleView({
             onChange={(event) => setCursor(Number(event.target.value))}
             aria-label="Position in the hand"
           />
+
+          <p className="history__keys">
+            <kbd>←</kbd> <kbd>→</kbd> step · <kbd>Home</kbd> start ·{' '}
+            <kbd>Esc</kbd> decision{answered ? ' · ' : ''}
+            {answered && (
+              <>
+                <kbd>Enter</kbd> next puzzle
+              </>
+            )}
+          </p>
 
           <p className="history__line">
             {atDecision ? (

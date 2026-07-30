@@ -188,10 +188,16 @@ That is not an orientation preference — it records *when* riichi was called, s
 it carries information the board would otherwise lose.
 
 Footprints on the felt are reserved rather than fitted: a hand is 14 tiles wide
-while its owner holds a draw and 13 after discarding, and a river grows from
-nothing to four rows. Sizing to content made every control below the board jump
-on each step through a hand's history. A test walks all frames of a hand and
-asserts the geometry does not move.
+while its owner holds a draw and 13 after discarding, a river grows from nothing
+to four rows, and the meld row appears the moment a seat calls. Sizing any of
+those to content made every control below the board jump on each step through a
+hand's history. The meld row was the least obvious of the three and the largest —
+it is rendered even when empty for exactly this reason.
+
+Keyboard: <kbd>←</kbd>/<kbd>→</kbd> step through the hand, <kbd>Home</kbd> jumps
+to the deal, <kbd>Esc</kbd> or <kbd>End</kbd> returns to the decision, and
+<kbd>Enter</kbd> advances — but only once the puzzle is answered, so a stray
+press cannot skip one unsolved.
 
 ### Difficulty
 
