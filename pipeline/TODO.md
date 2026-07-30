@@ -40,20 +40,28 @@ puzzles.
       default. Verified end to end on extracted decisions at ~6000 samples/sec on
       an M5 — matching the standalone benchmark.
 - [x] **Run it on real data.** 6.7M decisions from 14,000 hanchan of the 2010
-      houou set; holdout of 959k decisions from 2,000 disjoint games. The 2.2M-param
-      default reaches 66.8% agreement / 93.5% top-3 on held-out games at
-      ~3,900-4,300 samples/sec. Splits are carved by game, not by decision —
-      decisions from one hand are far too correlated to straddle a split.
+      houou set; holdout of 959k decisions from 2,000 disjoint games. Final:
+      **72.9% top-1 / 96.0% top-3** agreement on held-out games, cross-entropy
+      0.735, 20M samples in 1.38h at 4,023 samples/sec on MPS. Splits are carved
+      by game, not by decision — decisions from one hand are far too correlated
+      to straddle a split.
+- [x] **Confirm the mining premise.** 23.6% disagreement between the model's top
+      discard and the efficiency baseline over the shipped bank. Enough to mine;
+      and a floor, since that bank was selected for having clear-cut efficiency
+      answers.
+- [ ] Scale up if wanted. Agreement was still climbing at 20M samples and
+      cross-entropy had not flattened (0.97 -> 0.735), so more data or a bigger
+      network would both help. Published imitation models reach ~78-80%.
 - [ ] Consider CQL for the value head. Plain regression on realised placement
       learns the behaviour policy's value, which is biased where humans rarely
       act. Not blocking: akochan can carry EV meanwhile.
 
-## 3b. `mine.py` — not implemented
+## 3b. `mine.py` — scoring works
 
-Blocked only on a trained checkpoint now.
-
-- [ ] `OfflineModel.rank_actions` — load checkpoint, verify its `layout_version`
-      against `features.py`, score legal actions.
+- [x] `OfflineModel.rank_actions` — loads a checkpoint, verifies its
+      `layout_version` and tensor shapes against `features.py`, scores legal
+      discards. A layout mismatch does not crash, it silently scores garbage, so
+      the guard refuses rather than warns.
 - [ ] Attach the ukeire baseline per position for the naive-disagreement filter.
       The TS implementation in `src/lib/ukeire.ts` is the reference; either port
       it or shell out to `vite-node`.

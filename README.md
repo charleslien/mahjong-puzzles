@@ -228,16 +228,43 @@ python3 -m pipeline.train --input pipeline/data/train.jsonl.gz \
 ```
 
 **Result on real data.** 6.7M decisions from 14,000 hanchan of the 2010 houou
-set, holdout 959k decisions from 2,000 *different* games. The 2.2M-parameter
-default reaches **66.8% agreement** with the actual houou discard and 93.5%
-top-3 on held-out games, at 3,900-4,300 samples/sec end to end — below the
-6,310 pure-compute figure because JSON parsing is in the loop, and still an
-hour-scale run rather than a day-scale one.
+set; holdout of 959k decisions from 2,000 *different* games. The 2.18M-parameter
+default, 20M samples in **1.38 hours** at 4,023 samples/sec on MPS:
 
-Worth knowing what that number is not: agreement with a human is not
+| metric | held-out games |
+| --- | --- |
+| top-1 agreement with the houou discard | **72.9%** |
+| top-3 agreement | **96.0%** |
+| cross-entropy | 0.735 |
+
+4,023 samples/sec is below the 6,310 pure-compute benchmark because JSON parsing
+is in the loop. Still an hour-scale run rather than a day-scale one, and no
+rented GPU.
+
+Worth being clear what that number is not: agreement with a human is not
 correctness. It measures how well the model predicts houou-level play, which is
-what makes it useful for *mining* candidate positions, not for declaring an
+what makes it useful for *mining* candidate positions — not for declaring an
 answer right.
+
+**The mining premise holds.** The design borrows Lichess's shallow-vs-deep filter
+by treating naive-ukeire-vs-model disagreement as the instructiveness signal, so
+it is worth checking that the two actually disagree. Against the 220 shipped
+puzzles (`python -m pipeline.compare_baseline`):
+
+```
+model top-1 matches the ukeire baseline: 168/220 = 76.4%
+=> disagreement rate (the mining signal):        23.6%
+mean policy entropy:                       0.631 nats
+```
+
+Roughly one position in four, houou-trained play picks a different tile than pure
+efficiency. That is a rich seam — plenty to mine, while 76% agreement shows the
+model has learned efficiency as a floor rather than ignoring it.
+
+One caveat on that 23.6%: this bank was *selected* by the efficiency criteria, so
+these are positions where ukeire has a clear-cut answer. Disagreement on
+efficiency-obvious positions should run lower than on positions at large, which
+makes 23.6% a floor rather than an estimate.
 
 Two facts that shaped the data path, both measured rather than assumed. Dense
 features are never written to disk — 20M decisions would be ~700GB dense against
