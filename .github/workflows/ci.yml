@@ -1,0 +1,34 @@
+name: CI
+
+# Deployment is handled by Vercel, which builds from this repository directly.
+# This workflow only guards correctness: types, both test suites, and a
+# production build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The data stages are stdlib-only, so this needs no install step. The
+      # feature-encoder tests skip themselves when numpy is absent.
+      - run: python -m unittest discover -s pipeline -t .
+      - run: npm run build

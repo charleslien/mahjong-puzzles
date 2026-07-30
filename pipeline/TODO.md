@@ -23,16 +23,27 @@ and synthesising a `pass` action. That is how the `call` and `push_fold` puzzle
 kinds get populated, and it is worth doing: binary decisions make the cleanest
 puzzles.
 
-## 3. `mine.py` — not implemented
+## 3. Training — `features.py` and `train.py` done
 
-Blocked on training a model. See the module docstring for the architecture and
-compute estimate (~1-3 days on one consumer GPU for the offline phase).
+- [x] Feature encoder (`features.py`). 64 planes over the 34-tile axis. The layout
+      is a versioned contract written into every checkpoint; drift silently
+      invalidates a model, so `test_features.py` pins it.
+- [x] Training script (`train.py`). Policy + value heads, ResNet-1D, MPS by
+      default. Verified end to end on extracted decisions at ~6000 samples/sec on
+      an M5 — matching the standalone benchmark.
+- [ ] **Run it on real data.** Everything so far has only been smoke-tested on
+      simulated logs, where the model trivially memorises. No claim about real
+      accuracy can be made until it trains on a houou year with a held-out split.
+- [ ] Consider CQL for the value head. Plain regression on realised placement
+      learns the behaviour policy's value, which is biased where humans rarely
+      act. Not blocking: akochan can carry EV meanwhile.
 
-- [ ] Feature encoder: `position` dict -> model input tensor. Must be byte-identical
-      to the transform used in training.
-- [ ] Training script: CQL offline RL over extracted decisions, GRU rank-predictor
-      for the placement reward.
-- [ ] `OfflineModel.rank_actions` — load checkpoint, score legal actions.
+## 3b. `mine.py` — not implemented
+
+Blocked only on a trained checkpoint now.
+
+- [ ] `OfflineModel.rank_actions` — load checkpoint, verify its `layout_version`
+      against `features.py`, score legal actions.
 - [ ] Attach the ukeire baseline per position for the naive-disagreement filter.
       The TS implementation in `src/lib/ukeire.ts` is the reference; either port
       it or shell out to `vite-node`.
@@ -72,5 +83,6 @@ index integrity.
   keeps Mortal's weights private. Evaluations stay precomputed.
 - **Using leaked or bot-fork Mortal weights.** Against the author's explicit
   wishes, and it would poison the project's standing with the community it is for.
-- **Server-side Glicko-2 difficulty.** Needs a backend; GitHub Pages is static.
-  The schema is shaped so it can be added later without a migration.
+- **Server-side Glicko-2 difficulty.** Needs a backend and a shared datastore;
+  the site is a static deploy. Vercel functions would make this possible later —
+  the schema is shaped so it can be added without a migration.

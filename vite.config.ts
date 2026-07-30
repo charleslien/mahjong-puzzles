@@ -1,9 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Deployed at https://<user>.github.io/mahjong-puzzles/, so assets need the repo
-// name as the base path. Override with BASE_PATH=/ for a custom domain.
-const base = process.env.BASE_PATH ?? '/mahjong-puzzles/';
+// Vercel serves from the domain root, so the default base is '/'. Every asset
+// reference in the app goes through import.meta.env.BASE_URL, so deploying under
+// a subpath instead only needs this overridden — e.g. GitHub Pages would want
+// BASE_PATH=/mahjong-puzzles/.
+const base = process.env.BASE_PATH ?? '/';
 
 export default defineConfig({
   base,

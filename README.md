@@ -1,8 +1,8 @@
 # Mahjong Puzzles
 
 Riichi mahjong decision drills, mined from real games and graded by evaluation
-loss. A static site, deployable to GitHub Pages, with an offline generation
-pipeline that never runs in the browser.
+loss. A static site, deployed on Vercel, with an offline generation pipeline that
+never runs in the browser.
 
 **Current state:** the site is complete and playable against 120 computed
 tile-efficiency drills. The AI-evaluated puzzle bank is not built yet — two
@@ -14,22 +14,35 @@ pipeline stages need a trained model and an akochan build. See
 ```bash
 npm install
 npm run build:seed     # generate the puzzle bank into public/puzzles/
-npm run dev            # http://localhost:5173/mahjong-puzzles/
-npm test               # 45 tests
-python3 -m unittest discover -s pipeline -t .   # 43 tests, stdlib only
+npm run build:replays  # generate simulated replay logs into public/replays/
+npm run dev            # http://localhost:5173/
+npm test               # 65 tests
+python3 -m unittest discover -s pipeline -t .   # 65 tests
 ```
+
+The tile artwork is committed, so `npm run build:tiles` is only needed to
+regenerate it — it takes the path to a clone of
+[riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles).
 
 ## Deploying
 
-Push to `main`. The workflow in `.github/workflows/deploy.yml` builds and
-publishes automatically.
+Vercel builds from this repository. Import the repo once and it needs no further
+setup: `vercel.json` pins the framework, build command and output directory, and
+Vercel runs `npm run build` on every push to `main`.
 
-**One-time setup:** in **Settings → Pages**, set *Source* to **GitHub Actions**.
-There is no `gh-pages` branch — the site is uploaded as a Pages artifact straight
-from `main`, so nothing needs to be committed to a separate branch.
+The generated tile artwork, puzzle bank and replay logs all live in `public/` and
+are committed, so a deploy is a plain static build with no extra steps.
 
-The Vite `base` is `/mahjong-puzzles/`, matching the repo name. For a custom
-domain, build with `BASE_PATH=/`.
+Vite's `base` defaults to `/` because Vercel serves from the domain root. Every
+asset reference goes through `import.meta.env.BASE_URL`, so hosting under a
+subpath only needs `BASE_PATH` set at build time — GitHub Pages, for instance,
+would want `BASE_PATH=/mahjong-puzzles/`.
+
+Routing is hash-based (`#/train`, `#/replay`), so no SPA rewrite rules are
+required.
+
+`.github/workflows/ci.yml` only runs types, tests and a build. Deployment is
+Vercel's job.
 
 ## How puzzle generation works
 
@@ -92,22 +105,31 @@ away downstream.
 ## Architecture
 
 ```
-pipeline/          offline, Python, stdlib-only for the data stages
+pipeline/          offline; the data stages are stdlib-only by design
   extract.py       mjai logs -> decision records + placement labels   [done]
+  features.py      position -> dense planes; the training contract    [done]
+  train.py         policy + value heads, MPS/CUDA/CPU                 [done]
   criteria.py      publication rules: margin, accept set, exclusions  [done]
-  mine.py          rank candidates with the offline model             [not implemented]
-  verify.py        corroborate with akochan, drop disagreements       [not implemented]
+  mine.py          rank candidates with a trained model               [needs a checkpoint]
+  verify.py        corroborate with akochan, drop disagreements       [needs akochan]
   export.py        emit the site's puzzle bank JSON                   [done]
 
-src/lib/           the mahjong core, shared by site and seed generator
+src/lib/           the mahjong core, shared by site and generators
   tiles.ts         mjai notation, 34-index conversion, dora
   shanten.ts       all three hand forms, brute-force cross-checked
   ukeire.ts        acceptance counting, the naive baseline
+  replay.ts        mjai event stream -> steppable snapshots
   grade.ts         loss -> grade buckets, per-unit thresholds
   puzzleBank.ts    bank loading, filtering, deterministic shuffle
 
-src/components/    the trainer UI
-public/puzzles/    the shipped bank (generated; safe to regenerate)
+src/components/
+  GameBoard.tsx    four-sided table; per-seat tile rotation
+  ReplayView.tsx   step/scrub/play through a hand
+  PuzzleView.tsx   the drill, on the same board
+
+public/tiles/      CC0 tile artwork, composited (generated)
+public/puzzles/    the shipped bank (generated)
+public/replays/    simulated demo logs (generated)
 ```
 
 ### No model in the browser
@@ -142,6 +164,39 @@ server to aggregate across users. This site is static, so difficulty is a
 model-derived proxy from evaluation margin, policy entropy, and whether the naive
 baseline fails. The schema is shaped so real ratings can be added later without a
 migration.
+
+## Training
+
+Measured on an Apple M5, fp32, forward+backward:
+
+| model | params | CPU/s | MPS/s | 20M samples |
+| --- | --- | --- | --- | --- |
+| 192ch x 40 (Mortal-scale) | 10.2M | 45 | 802 | 7.1h MPS / 121h CPU |
+| 128ch x 10 (default) | 2.3M | 292 | 6310 | 0.9h MPS / 20h CPU |
+| 96ch x 6 | 1.6M | 604 | 13168 | 0.4h MPS / 10h CPU |
+
+**Use MPS.** It is 18-22x faster than CPU on the same machine, so no rented GPU is
+needed: even the Mortal-scale network over 100M samples is ~35 hours locally
+against 25 days on CPU. `--device` picks the best backend available.
+
+```bash
+python3 -m pipeline.extract --input data/logs/2024 --output data/decisions.jsonl
+python3 -m pipeline.train --input data/decisions.jsonl --out data/model.pt \
+    --holdout data/holdout.jsonl
+```
+
+Two facts that shaped the data path, both measured rather than assumed. Dense
+features are never written to disk — 20M decisions would be ~700GB dense against
+~3.4GB for the compact records — so encoding happens per batch. And the encoder
+runs ~50x faster than the model, so it stays pure numpy and single-threaded.
+
+The **policy head** is the one to trust: its target is the tile a houou-level
+player actually discarded. The **value head** regresses realised final placement,
+which learns the value of houou-*average* play rather than optimal play and is
+least reliable exactly where humans rarely act. That is what Conservative
+Q-Learning exists to fix. Until it is implemented here, the value head is a weak
+prior and akochan carries the expected-value figure the site displays;
+`--no-value` trains policy only.
 
 ## Testing
 

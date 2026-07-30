@@ -1,8 +1,8 @@
 /**
  * Local progress tracking.
  *
- * GitHub Pages has no backend, so progress lives in localStorage and never
- * leaves the device. The shape is intentionally close to what a server-backed
+ * The site is a static deploy with no backend, so progress lives in localStorage
+ * and never leaves the device. The shape is intentionally close to what a server-backed
  * build would need, so adding real Glicko-2 ratings later is additive rather
  * than a migration.
  */
