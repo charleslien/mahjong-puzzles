@@ -75,6 +75,7 @@ def load_history(
     log_dir: str,
     game_id: str,
     event_index: int,
+    seat: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Events of the log up to and including `event_index - 1`.
 
@@ -83,6 +84,14 @@ def load_history(
     `start_game`, which akochan requires: `pipe_detailed` truncates its record to
     `begin() + 1` on every `start_kyoku`, which on an empty record is undefined
     behaviour rather than a clean error.
+
+    A trailing `reach` by `seat` is dropped. In mjai the declaration precedes the
+    discard it is declared on, so a prefix cut at the discard still contains it —
+    and akochan, seeing a player already committed, offers no declaration to
+    evaluate. Left in, every position where a riichi was actually declared
+    silently became a plain discard question, and the only riichi puzzles that
+    survived were ones where nobody declared. The bank would have taught that
+    the answer is always damaten.
     """
     path = os.path.join(log_dir, game_id)
     if not os.path.exists(path):
@@ -96,6 +105,13 @@ def load_history(
             line = line.strip()
             if line:
                 events.append(json.loads(line))
+
+    while (
+        events
+        and events[-1].get("type") == "reach"
+        and (seat is None or int(events[-1].get("actor", -1)) == seat)
+    ):
+        events.pop()
     return events
 
 
@@ -152,6 +168,65 @@ def build_actions(
     return actions
 
 
+def build_riichi_actions(
+    akochan_ranked: Sequence[Dict[str, Any]],
+    candidate: Dict[str, Any],
+) -> Optional[List[Dict[str, Any]]]:
+    """Turn akochan's option list into a riichi-or-damaten pair, or None.
+
+    Returns None when the position offers no declaration — the overwhelming
+    majority, since riichi needs a closed tenpai hand, a 1000-point stick and
+    live wall.
+
+    The comparison is between the best line of each sort, not between two ways of
+    playing the same tile: staying concealed may well want a different discard
+    than declaring would, and forcing them onto the same tile would be a
+    different, easier question than the one players actually face.
+    """
+    reach = next((entry for entry in akochan_ranked if entry.get("kind") == "reach"), None)
+    if reach is None:
+        return None
+
+    dama = next((entry for entry in akochan_ranked if entry["id"].startswith("discard:")), None)
+    if dama is None:
+        return None
+
+    annotations = candidate.get("ukeireActions") or {}
+    reach_tile = reach.get("tile")
+    reach_annotation = annotations.get("discard:{}".format(reach_tile), {})
+    dama_annotation = annotations.get(dama["id"], {})
+
+    def label(prefix: str, tile: Optional[str], annotation: Dict[str, Any]) -> str:
+        name = annotation.get("label", "").replace("Discard ", "")
+        return "{}, discarding {}".format(prefix, name or tile)
+
+    # The best concealed line does not always keep the hand together: akochan
+    # sometimes prefers giving up tenpai to declaring. Calling that "stay
+    # concealed" would describe a fold as a quiet wait, so the label follows what
+    # the tile actually does.
+    dama_shanten = dama_annotation.get("shantenAfter")
+    dama_prefix = "Back off" if dama_shanten not in (None, 0) else "Stay concealed"
+
+    return [
+        {
+            "id": "riichi",
+            "label": label("Declare riichi", reach_tile, reach_annotation),
+            "tile": reach_tile,
+            "ev": reach["ev"],
+            "shantenAfter": reach_annotation.get("shantenAfter"),
+            "ukeire": reach_annotation.get("ukeire"),
+        },
+        {
+            "id": "damaten",
+            "label": label(dama_prefix, dama.get("tile"), dama_annotation),
+            "tile": dama.get("tile"),
+            "ev": dama["ev"],
+            "shantenAfter": dama_shanten,
+            "ukeire": dama_annotation.get("ukeire"),
+        },
+    ]
+
+
 def model_ranking(candidate: Dict[str, Any], actions: Sequence[Dict[str, Any]]) -> List[str]:
     """The model's preference order over the actions that survived.
 
@@ -183,14 +258,14 @@ def verify_candidate(
     if not game_id or event_index is None:
         raise Rejection("no_log_reference")
 
+    seat = int((candidate.get("position") or {}).get("seat", candidate.get("actor", 0)))
+
     try:
-        history = load_history(log_dir, str(game_id), int(event_index))
+        history = load_history(log_dir, str(game_id), int(event_index), seat)
     except FileNotFoundError:
         raise Rejection("log_missing")
     if not history:
         raise Rejection("empty_history")
-
-    seat = int((candidate.get("position") or {}).get("seat", candidate.get("actor", 0)))
 
     try:
         ranked = engine.evaluate(history, seat)
@@ -201,22 +276,46 @@ def verify_candidate(
     if not ranked:
         raise Rejection("akochan_returned_nothing")
 
-    actions = build_actions(ranked, candidate)
-    rankings = [
-        [action["id"] for action in actions],  # akochan, already EV-sorted
-        model_ranking(candidate, actions),
-    ]
+    riichi_actions = build_riichi_actions(ranked, candidate)
+    if riichi_actions is not None:
+        # A declaration is available, so ask the more interesting question. The
+        # tile choice is subsumed: each option already names the discard its own
+        # line wants.
+        kind = "riichi"
+        actions = riichi_actions
+        # The imitation network ranks discards only and has no view on
+        # reach-versus-dama, so it cannot be the second evaluator here. The
+        # houou player's own choice stands in: a single strong human rather than
+        # a panel, and labelled as such — but genuinely independent of a search,
+        # which is what the agreement gate is for.
+        declared = bool(candidate.get("declaredRiichi"))
+        rankings = [
+            [action["id"] for action in sorted(actions, key=lambda a: -a["ev"])],
+            ["riichi", "damaten"] if declared else ["damaten", "riichi"],
+        ]
+        evaluators = ["akochan", "houou-player"]
+    else:
+        kind = candidate.get("kind", "discard")
+        actions = build_actions(ranked, candidate)
+        rankings = [
+            [action["id"] for action in actions],  # akochan, already EV-sorted
+            model_ranking(candidate, actions),
+        ]
+        evaluators = EVALUATORS
 
     enriched = dict(candidate)
+    enriched["kind"] = kind
     enriched["actions"] = actions
     enriched["rankings"] = rankings
-    enriched["evaluators"] = EVALUATORS
+    enriched["evaluators"] = evaluators
     enriched["epsilon"] = epsilon
     # Only the events needed to replay the hand in the trainer. `history` is
     # sliced from start_kyoku because that is what the site's replay expects; the
     # start_game event akochan needs is not part of the puzzle.
     enriched["history"] = _kyoku_history(history)
-    enriched["akochanBest"] = actions[0]["id"]
+    # Not actions[0]: riichi actions are emitted in a fixed order for display,
+    # so the best is whichever has the highest EV.
+    enriched["akochanBest"] = max(actions, key=lambda action: action["ev"])["id"]
 
     screened = screen_candidate(
         enriched,
@@ -244,9 +343,14 @@ def tags_for(
     position = candidate.get("position") or {}
     seat = int(position.get("seat", 0))
     best_shanten = candidate.get("bestShanten")
-    tags = ["discard"]
+    kind = candidate.get("kind", "discard")
+    tags = [kind]
 
-    if best_shanten == 0:
+    if kind == "riichi":
+        # Every riichi position is tenpai by definition, so "tenpai-choice" adds
+        # nothing; whether the declaration was actually made is the useful axis.
+        tags.append("declared" if candidate.get("declaredRiichi") else "stayed-concealed")
+    elif best_shanten == 0:
         tags.append("tenpai-choice")
     elif candidate.get("currentShanten") == 2:
         tags.append("two-shanten")

@@ -144,11 +144,19 @@ export function tileLabel(tile: Tile): string {
     C: 'Red dragon',
   };
   if (canonical in honorNames) return honorNames[canonical];
-  const suitNames: Record<string, string> = { m: 'characters', p: 'circles', s: 'bamboo' };
+  // Singular at rank 1, since the number is a count of what the tile depicts:
+  // the 5 of circles really does show five circles, but "1 characters" is just
+  // wrong, and it appeared in every label and explanation for a 1m, 1p or 1s.
+  const suitNames: Record<string, [singular: string, plural: string]> = {
+    m: ['character', 'characters'],
+    p: ['circle', 'circles'],
+    s: ['bamboo', 'bamboo'],
+  };
   const match = /^([0-9])([mps])(r?)$/.exec(canonical);
   if (!match) return canonical;
   const [, rank, suit, red] = match;
-  return `${red ? 'red ' : ''}${rank} ${suitNames[suit]}`;
+  const [singular, plural] = suitNames[suit];
+  return `${red ? 'red ' : ''}${rank} ${rank === '1' ? singular : plural}`;
 }
 
 /** The dora indicated by a given indicator tile. */

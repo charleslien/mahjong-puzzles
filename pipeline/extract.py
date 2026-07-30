@@ -70,6 +70,8 @@ class GameState:
         self.rivers: List[List[str]] = [[] for _ in range(self.num_players)]
         self.melds: List[List[Dict[str, Any]]] = [[] for _ in range(self.num_players)]
         self.riichi: List[bool] = [False] * self.num_players
+        # Declared but not yet discarded on. See `reach`.
+        self.pending_riichi: List[bool] = [False] * self.num_players
         self.last_draw: List[Optional[str]] = [None] * self.num_players
         self.tiles_left = LIVE_WALL_AT_START
         self.in_kyoku = False
@@ -110,6 +112,10 @@ class GameState:
         self._remove_from_hand(actor, tile)
         self.rivers[actor].append(tile)
         self.last_draw[actor] = None
+        # A declaration takes effect on the discard it was declared with.
+        if self.pending_riichi[actor]:
+            self.riichi[actor] = True
+            self.pending_riichi[actor] = False
 
     def call(self, event: Dict[str, Any]) -> None:
         kind = event["type"]
@@ -146,9 +152,20 @@ class GameState:
         self.last_draw[actor] = None
 
     def reach(self, event: Dict[str, Any]) -> None:
-        # The declaration is visible to everyone immediately, even though the
-        # 1000-point stick is not paid until the reach stands.
-        self.riichi[int(event["actor"])] = True
+        """Mark a declaration as pending, without setting the riichi flag yet.
+
+        In mjai the `reach` event precedes the discard it is declared on, so
+        setting the flag here would make the *declaring* discard look like it was
+        made by a player already in riichi. That had two consequences: the
+        decision was skipped as forced, which is why riichi decisions were absent
+        from the bank entirely; and had it not been skipped, the position would
+        have shown a riichi stick already committed while asking whether to
+        declare one.
+
+        Nothing else acts between the declaration and its discard, so deferring
+        the flag until the discard is applied is not observable elsewhere.
+        """
+        self.pending_riichi[int(event["actor"])] = True
 
     def reach_accepted(self, event: Dict[str, Any]) -> None:
         """Pay the riichi stick.
@@ -280,6 +297,11 @@ def extract_from_events(
             actor = int(event["actor"])
             # Record the decision *before* applying it, and only when the hand
             # is fully known and the player actually had a choice.
+            #
+            # `state.riichi` excludes discards forced by a standing riichi. The
+            # discard a riichi is *declared* on is not forced — it is the
+            # decision — and reaches this branch because `reach` now only marks
+            # the declaration pending.
             if state.in_kyoku and state.hand_is_known(actor) and not state.riichi[actor]:
                 pending.append(
                     {
@@ -297,6 +319,11 @@ def extract_from_events(
                         "position": state.observe(actor),
                         "actionTaken": "discard:{}".format(normalize_tile(event["pai"])),
                         "tsumogiri": bool(event.get("tsumogiri", False)),
+                        # Whether this discard carried a riichi declaration. For
+                        # riichi puzzles this is the second opinion: akochan is
+                        # the only evaluator with a view on reach-versus-dama,
+                        # since the imitation network ranks discards only.
+                        "declaredRiichi": bool(state.pending_riichi[actor]),
                     }
                 )
                 decision_index += 1

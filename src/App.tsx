@@ -10,6 +10,7 @@ import { filterPuzzles, loadBank, shuffled, type LoadedBank } from './lib/puzzle
 import {
   clearProgress,
   loadProgress,
+  attemptedIds,
   recordAttempt,
   saveProgress,
   type Progress,
@@ -49,7 +50,10 @@ export default function App() {
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
 
   const [band, setBand] = useState<(typeof DIFFICULTY_BANDS)[number]['id']>('all');
-  const [seed, setSeed] = useState(() => 1);
+  // A fresh order per visit. This was a constant, so every reload dealt the
+  // identical shuffle and reopened the same puzzle — the site looked like it had
+  // one position in it.
+  const [seed, setSeed] = useState(() => (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
   const [cursor, setCursor] = useState(0);
   const [answer, setAnswer] = useState<GradedAnswer>();
 
@@ -72,7 +76,19 @@ export default function App() {
       minDifficulty: selected.min,
       maxDifficulty: selected.max,
     });
-    return shuffled(filtered, seed);
+
+    // Unseen puzzles first, then everything else. Without this a random order
+    // still keeps serving positions already answered, which with 897 puzzles and
+    // a growing history is most of what you would see. Answered ones stay in the
+    // queue rather than being dropped, so the session never runs dry.
+    const seen = attemptedIds(progress);
+    const order = shuffled(filtered, seed);
+    const fresh = order.filter((puzzle) => !seen.has(puzzle.id));
+    const repeats = order.filter((puzzle) => seen.has(puzzle.id));
+    return [...fresh, ...repeats];
+    // `progress` is deliberately not a dependency: re-sorting the moment an
+    // answer lands would move the puzzle you are still looking at.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bank, band, seed]);
 
   // A permalinked puzzle takes precedence over wherever the session sits.

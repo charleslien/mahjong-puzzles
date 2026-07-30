@@ -406,16 +406,29 @@ class AkochanEngine:
                 continue
             first = moves[0] if moves else {}
             ev = float(review["pt_exp_total"])
-            if first.get("type") == "dahai":
+            kind = first.get("type")
+
+            if kind == "dahai":
                 tile = first.get("pai")
                 actions.append(
                     {"id": "discard:{}".format(tile), "tile": tile, "ev": ev, "moves": moves}
                 )
-            else:
-                # Riichi declarations, calls and wins also appear, carrying an EV
-                # but no discarded tile.
+            elif kind == "reach":
+                # A declaration is always a pair: `reach` then the discard it is
+                # declared on. The tile matters — a riichi puzzle compares
+                # declaring against playing on, and the two lines may not even
+                # want the same tile.
+                declared_on = next(
+                    (move.get("pai") for move in moves if move.get("type") == "dahai"),
+                    None,
+                )
                 actions.append(
-                    {"id": first.get("type", "unknown"), "tile": None, "ev": ev, "moves": moves}
+                    {"id": "riichi", "tile": declared_on, "ev": ev, "moves": moves, "kind": "reach"}
+                )
+            else:
+                # Calls and wins also appear, carrying an EV but no discard.
+                actions.append(
+                    {"id": kind or "unknown", "tile": None, "ev": ev, "moves": moves, "kind": kind}
                 )
 
         actions.sort(key=lambda action: -action["ev"])

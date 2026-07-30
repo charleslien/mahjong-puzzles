@@ -116,19 +116,21 @@ def explain(
         default=None,
     )
 
-    parts = [
-        "akochan puts {} ahead at {:+.2f} placement points".format(
-            best.get("label", best["id"]).replace("Discard ", "discarding "),
-            best["ev"],
-        )
-    ]
+    def phrase(action: Dict[str, Any]) -> str:
+        """The action as a verb phrase, so it reads inside a sentence.
+
+        Discards say "Discard 5 circles"; riichi options say "Declare riichi,
+        discarding ...". Both need their leading capital dropped, and only the
+        first also needs its verb inflected.
+        """
+        text = action.get("label") or action["id"]
+        if text.startswith("Discard "):
+            return text.replace("Discard ", "discarding ", 1)
+        return text[:1].lower() + text[1:]
+
+    parts = ["akochan puts {} ahead at {:+.2f} placement points".format(phrase(best), best["ev"])]
     if runner_up is not None:
-        parts.append(
-            "{:.2f} clear of {}".format(
-                best["ev"] - runner_up["ev"],
-                runner_up.get("label", runner_up["id"]).replace("Discard ", "discarding "),
-            )
-        )
+        parts.append("{:.2f} clear of {}".format(best["ev"] - runner_up["ev"], phrase(runner_up)))
     if best.get("shantenAfter") is not None and best.get("ukeire") is not None:
         parts.append(
             "leaving {} with {} tiles of acceptance".format(

@@ -63,12 +63,19 @@ export function About({ index }: { index: PuzzleIndex }) {
         otherwise-publishable candidates. Kan decisions and extreme endgame spots are excluded
         outright, since those are akochan's documented weak points.
       </p>
+      <p>
+        <strong>Riichi puzzles use a different second opinion.</strong> The network ranks discards,
+        so it has no view on whether to declare and cannot corroborate that decision. In its place
+        stands the choice the houou player actually made at the table — a single strong human rather
+        than a panel, but genuinely independent of a search. A riichi position is published only when
+        akochan and that player agree.
+      </p>
       <p className="callout">
         What this does <em>not</em> mean: that the answers are ground truth. akochan is a strong
-        engine, not an oracle, and it is measurably weaker than the best AI available. Every position
-        here is a discard decision — calls and push/fold decisions are not yet mined, because declining
-        a call leaves no trace in a game log to learn from. Difficulty is derived from the evaluation
-        rather than from whether anyone actually gets it wrong.
+        engine, not an oracle, and it is measurably weaker than the best AI available. Positions are
+        discard and riichi decisions only — calls and push-or-fold are not yet mined, because
+        declining a call leaves no trace in a game log to learn from. Difficulty is derived from the
+        evaluation rather than from whether anyone actually gets it wrong.
       </p>
 
       <h3>No model in your browser</h3>

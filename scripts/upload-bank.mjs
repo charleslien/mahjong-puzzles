@@ -125,7 +125,35 @@ if (!meta.ok) {
   process.exit(1);
 }
 
+// Remove rows the regenerated bank no longer contains. Upserting alone leaves
+// them behind, and because the site reads the database rather than the JSON,
+// stale puzzles would keep being served long after they stopped existing in the
+// source — visible only as a puzzle that cannot be found on disk.
+const existing = await fetch(`${url}/rest/v1/puzzles?select=id`, { headers });
+if (!existing.ok) {
+  console.error(`could not list existing rows: ${existing.status}`);
+  process.exit(1);
+}
+const stale = (await existing.json()).map((row) => row.id).filter((id) => !ids.has(id));
+if (stale.length) {
+  const list = stale.map((id) => `"${id}"`).join(',');
+  const removed = await fetch(`${url}/rest/v1/puzzles?id=in.(${list})`, {
+    method: 'DELETE',
+    headers,
+  });
+  if (!removed.ok) {
+    console.error(`could not remove stale rows: ${removed.status} ${await removed.text()}`);
+    process.exit(1);
+  }
+  console.log(`removed ${stale.length} puzzle(s) no longer in the bank`);
+}
+
 const check = await fetch(`${url}/rest/v1/puzzles?select=id`, {
   headers: { ...headers, Prefer: 'count=exact', Range: '0-0' },
 });
-console.log(`done. rows in table: ${check.headers.get('content-range')?.split('/')[1] ?? '?'}`);
+const total = check.headers.get('content-range')?.split('/')[1] ?? '?';
+console.log(`done. rows in table: ${total}`);
+if (String(total) !== String(puzzles.length)) {
+  console.error(`expected ${puzzles.length}; the table and the bank disagree`);
+  process.exit(1);
+}

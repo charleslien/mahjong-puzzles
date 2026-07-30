@@ -9,7 +9,9 @@ import { GameBoard } from './GameBoard';
 
 const PROMPTS: Record<Puzzle['kind'], string> = {
   discard: 'Which tile do you discard?',
-  riichi: 'Declare riichi, or stay concealed?',
+  // Not "or stay concealed?": the alternative is sometimes backing off the hand
+  // entirely, and each option says for itself what it does.
+  riichi: 'Do you declare riichi?',
   call: 'Do you call, or let it pass?',
   push_fold: 'Push, or fold?',
   kan: 'Do you call kan?',

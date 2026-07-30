@@ -68,6 +68,19 @@ echo "==> 5/5 export"
   --input "$WORK/verified.jsonl" --output public/puzzles \
   --generated-at "$(date +%Y-%m-%d)"
 
+# The site reads the database when VITE_PUZZLE_SOURCE=supabase, so regenerating
+# the JSON without uploading leaves it serving the previous bank. That is not a
+# visible failure — the site works, it just shows puzzles that no longer exist —
+# so the upload belongs in the pipeline rather than in someone's memory.
+if [ -n "${SUPABASE_SECRET_KEY:-}" ] && [ -f .env.local ]; then
+  echo "==> 6/6 upload to Supabase"
+  node --env-file=.env.local scripts/upload-bank.mjs
+else
+  echo
+  echo "note: no SUPABASE_SECRET_KEY, so the database was not updated."
+  echo "      If the site reads from Supabase it is still serving the old bank."
+fi
+
 echo
 echo "bank written to public/puzzles. Audit it before shipping:"
 echo "  npm test         # includes bank integrity audits"

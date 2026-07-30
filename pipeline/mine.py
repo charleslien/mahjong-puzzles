@@ -226,6 +226,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 # invented one.
                 "eventIndex": record.get("eventIndex"),
                 "actor": record.get("actor"),
+                # The second opinion for riichi puzzles, where the model has no
+                # view on reach-versus-dama.
+                "declaredRiichi": record.get("declaredRiichi", False),
                 "modelRanking": [entry["id"] for entry in ranked],
                 "policy": {entry["id"]: entry["policy"] for entry in ranked},
                 "policyEntropy": model.policy_entropy(ranked),

@@ -168,16 +168,47 @@ class ExtractTest(unittest.TestCase):
         self.assertEqual(self.records[0]["finalScore"], 33000)
         self.assertEqual(self.records[2]["finalScore"], 17000)
 
-    def test_riichi_discards_are_skipped(self):
-        # Once riichi is declared the discard is forced, so it is not a decision.
+    def test_the_declaring_discard_is_a_decision(self):
+        """The discard a riichi is declared on is the decision itself.
+
+        `reach` precedes its discard in mjai, so treating the declaration as
+        immediately in effect made this discard look forced and dropped it. That
+        removed every riichi-or-damaten position from the dataset.
+        """
         log = build_log()
         insert_at = log.index({"type": "tsumo", "actor": 1, "pai": "E"})
         log.insert(insert_at, {"type": "reach", "actor": 1})
         records = extract_from_events(log, game_id="test")
+
         self.assertEqual(
             [record["actionTaken"] for record in records],
-            ["discard:1m", "discard:P"],
+            ["discard:1m", "discard:E", "discard:P"],
         )
+        declaring = records[1]
+        self.assertTrue(declaring["declaredRiichi"])
+        # The board must not show a riichi the player has not committed to yet,
+        # or the puzzle asks whether to declare while displaying the stick.
+        self.assertEqual(declaring["position"]["riichi"][1], False)
+
+    def test_ordinary_discards_are_not_flagged_as_declarations(self):
+        for record in extract_from_events(build_log(), game_id="test"):
+            self.assertFalse(record["declaredRiichi"], record["actionTaken"])
+
+    def test_discards_after_riichi_are_skipped(self):
+        # Once the declaration stands, later discards are forced by the rules and
+        # are not decisions.
+        log = build_log()
+        insert_at = log.index({"type": "tsumo", "actor": 1, "pai": "E"})
+        log.insert(insert_at, {"type": "reach", "actor": 1})
+        after = log.index({"type": "dahai", "actor": 1, "pai": "E", "tsumogiri": True}) + 1
+        log[after:after] = [
+            {"type": "reach_accepted", "actor": 1},
+            {"type": "tsumo", "actor": 1, "pai": "9p"},
+            {"type": "dahai", "actor": 1, "pai": "9p", "tsumogiri": True},
+        ]
+        actions = [record["actionTaken"] for record in extract_from_events(log, game_id="test")]
+        self.assertIn("discard:E", actions)
+        self.assertNotIn("discard:9p", actions)
 
     def test_hidden_hands_are_skipped(self):
         log = build_log()
