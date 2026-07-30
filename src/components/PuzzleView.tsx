@@ -40,7 +40,6 @@ export function PuzzleView({
   onNext,
   index,
   total,
-  upright,
 }: {
   puzzle: Puzzle;
   answer?: GradedAnswer;
@@ -48,7 +47,6 @@ export function PuzzleView({
   onNext: () => void;
   index: number;
   total: number;
-  upright: boolean;
 }) {
   const frames = useFrames(puzzle);
   const decisionFrame = frames.length - 1;
@@ -105,7 +103,6 @@ export function PuzzleView({
       <GameBoard
         snapshot={frame}
         viewer={puzzle.position.seat}
-        upright={upright}
         // Opponents stay concealed until the puzzle is answered; revealing them
         // beforehand would hand over the information the puzzle is about.
         revealAll={answered && revealAll}

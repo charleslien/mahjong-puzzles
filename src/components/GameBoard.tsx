@@ -8,53 +8,25 @@ const SEAT_WINDS = ['E', 'S', 'W', 'N'] as const;
 type Position = 'bottom' | 'right' | 'top' | 'left';
 
 /**
- * Rotation applied to a seat's tiles so they face that player.
+ * Every seat's tiles are drawn upright, in horizontal rows.
  *
- * A tile's top edge points *away* from its owner, toward the table centre. So
- * the seat on the right needs its top pointing left, which is a counter-clockwise
- * quarter turn (270), and the seat on the left needs the clockwise one (90).
- * Getting these two the wrong way round leaves the side seats reading upside
- * down from their own chairs.
+ * A real table turns each player's tiles to face them, and this used to. It
+ * reads worse: rotated faces are harder to identify at a glance, and a river
+ * that grows away from its owner scrambles the discard order for three of the
+ * four seats. Legibility wins for a study tool.
+ *
+ * The one rotation kept is the riichi declaration tile, laid sideways in the
+ * river. That is not an orientation preference — it is how a table records
+ * *when* riichi was called, so it carries information the board would otherwise
+ * lose.
  */
-const ROTATION: Record<Position, Rotation> = {
-  bottom: 0,
-  right: 270,
-  top: 180,
-  left: 90,
-};
-
-/** Everything upright, for legibility over realism. */
-const NO_ROTATION: Record<Position, Rotation> = {
-  bottom: 0,
-  right: 0,
-  top: 0,
-  left: 0,
-};
-
-/** Rivers are laid out in rows of six, growing away from the player. */
-const RIVER_COLUMNS = 6;
+const RIICHI_ROTATION: Rotation = 90;
 
 function windFor(seat: Seat, oya: Seat): string {
   return SEAT_WINDS[(seat - oya + 4) % 4];
 }
 
-function River({
-  seat,
-  position,
-  size,
-  rotations,
-}: {
-  seat: SeatState;
-  position: Position;
-  size: TileSize;
-  rotations: Record<Position, Rotation>;
-}) {
-  const rotation = rotations[position];
-  const rows: Tile[][] = [];
-  for (let i = 0; i < seat.river.length; i += RIVER_COLUMNS) {
-    rows.push(seat.river.slice(i, i + RIVER_COLUMNS).map((entry) => entry.tile));
-  }
-
+function River({ seat, position, size }: { seat: SeatState; position: Position; size: TileSize }) {
   return (
     <div className={`board__river board__river--${position}`}>
       {seat.river.map((entry, i) => (
@@ -62,31 +34,17 @@ function River({
           key={`${entry.tile}-${i}`}
           tile={entry.tile}
           size={size}
-          // A riichi declaration tile is turned sideways at a real table.
-          rotation={
-            entry.riichi ? (((rotation + 90) % 360) as Rotation) : rotation
-          }
+          rotation={entry.riichi ? RIICHI_ROTATION : 0}
           spent={entry.called}
           describedAs={entry.called ? 'claimed' : entry.riichi ? 'riichi tile' : undefined}
           muted
         />
       ))}
-      {rows.length === 0 && <span className="board__river-empty" />}
     </div>
   );
 }
 
-function Melds({
-  seat,
-  position,
-  size,
-  rotations,
-}: {
-  seat: SeatState;
-  position: Position;
-  size: TileSize;
-  rotations: Record<Position, Rotation>;
-}) {
+function Melds({ seat, position, size }: { seat: SeatState; position: Position; size: TileSize }) {
   if (seat.melds.length === 0) return null;
   return (
     <div className={`board__melds board__melds--${position}`}>
@@ -98,7 +56,6 @@ function Melds({
               // A closed kan shows its outer tiles face-down.
               tile={meld.kind === 'ankan' && (j === 0 || j === 3) ? undefined : tile}
               size={size}
-              rotation={rotations[position]}
             />
           ))}
         </span>
@@ -115,7 +72,6 @@ function Hand({
   interactive,
   onSelect,
   accentFor,
-  rotations,
 }: {
   seat: SeatState;
   position: Position;
@@ -124,17 +80,14 @@ function Hand({
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
   accentFor?: (tile: Tile) => 'best' | 'good' | 'bad' | undefined;
-  rotations: Record<Position, Rotation>;
 }) {
-  const rotation = rotations[position];
-
   // Contents genuinely unrecorded: draw the right number of backs and never
   // reveal them, whatever the reveal toggle says.
   if (seat.unknownCount !== undefined) {
     return (
       <div className={`board__hand board__hand--${position}`}>
         {Array.from({ length: Math.max(0, seat.unknownCount) }, (_, i) => (
-          <TileView key={i} size={size} rotation={rotation} />
+          <TileView key={i} size={size} />
         ))}
       </div>
     );
@@ -158,7 +111,6 @@ function Hand({
           key={`${tile}-${i}`}
           tile={reveal ? tile : undefined}
           size={size}
-          rotation={rotation}
           accent={reveal ? accentFor?.(tile) : undefined}
           onSelect={interactive && reveal ? onSelect : undefined}
         />
@@ -168,7 +120,6 @@ function Hand({
           <TileView
             tile={reveal ? drawn : undefined}
             size={size}
-            rotation={rotation}
             drawn
             accent={reveal ? accentFor?.(drawn) : undefined}
             onSelect={interactive && reveal ? onSelect : undefined}
@@ -186,27 +137,21 @@ function SeatPlate({
   oya,
   isViewer,
   active,
-  position,
 }: {
   seat: Seat;
   state: SeatState;
   oya: Seat;
   isViewer: boolean;
   active: boolean;
-  position: Position;
 }) {
   return (
     <div
-      className={[
-        'plate',
-        `plate--${position}`,
-        active ? 'plate--active' : '',
-        isViewer ? 'plate--viewer' : '',
-      ]
+      className={['plate', active ? 'plate--active' : '', isViewer ? 'plate--viewer' : '']
         .filter(Boolean)
         .join(' ')}
     >
       <span className="plate__wind">{windFor(seat, oya)}</span>
+      {isViewer && <span className="plate__label">you</span>}
       <span className="plate__score">{state.score.toLocaleString()}</span>
       {state.riichi && <span className="plate__riichi">R</span>}
     </div>
@@ -219,8 +164,6 @@ export interface GameBoardProps {
   viewer: Seat;
   /** Show every seat's tiles rather than only the viewer's. */
   revealAll?: boolean;
-  /** Draw every seat's tiles upright instead of turned to face its owner. */
-  upright?: boolean;
   /** Make the viewer's hand clickable. */
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
@@ -228,41 +171,44 @@ export interface GameBoardProps {
 }
 
 /**
- * A four-sided table. Each seat's tiles are rotated to face that seat, so the
- * board reads the way it would from the viewer's chair.
+ * The table. Seats keep their positions around the felt — the viewer at the
+ * bottom, the next to act on the right — but every hand and river is laid out in
+ * horizontal rows, so the whole board reads in one direction.
  */
 export function GameBoard({
   snapshot,
   viewer,
   revealAll = false,
-  upright = false,
   interactive = false,
   onSelect,
   accentFor,
 }: GameBoardProps) {
-  const rotations = upright ? NO_ROTATION : ROTATION;
   const layout = seatLayout(viewer);
   const positions: Array<[Position, Seat]> = [
-    ['bottom', layout.bottom],
-    ['right', layout.right],
     ['top', layout.top],
     ['left', layout.left],
+    ['right', layout.right],
+    ['bottom', layout.bottom],
   ];
 
   return (
     <div className="board">
-      <div className={`board__felt ${upright ? 'board__felt--upright' : ''}`}>
+      <div className="board__felt">
         {positions.map(([position, seat]) => {
           const state = snapshot.seats[seat];
           const reveal = revealAll || seat === viewer;
-          // Side seats get smaller tiles so four hands fit the felt.
           const handSize: TileSize = position === 'bottom' ? 'lg' : 'sm';
           const riverSize: TileSize = position === 'bottom' ? 'sm' : 'xs';
 
           return (
             <div className={`board__side board__side--${position}`} key={position}>
-              <Melds seat={state} position={position} size={riverSize} rotations={rotations} />
-              <River seat={state} position={position} size={riverSize} rotations={rotations} />
+              <SeatPlate
+                seat={seat}
+                state={state}
+                oya={snapshot.oya}
+                isViewer={seat === viewer}
+                active={snapshot.actor === seat}
+              />
               <Hand
                 seat={state}
                 position={position}
@@ -271,16 +217,9 @@ export function GameBoard({
                 interactive={interactive && seat === viewer}
                 onSelect={onSelect}
                 accentFor={seat === viewer ? accentFor : undefined}
-                rotations={rotations}
               />
-              <SeatPlate
-                seat={seat}
-                state={state}
-                oya={snapshot.oya}
-                isViewer={seat === viewer}
-                active={snapshot.actor === seat}
-                position={position}
-              />
+              <Melds seat={state} position={position} size={riverSize} />
+              <River seat={state} position={position} size={riverSize} />
             </div>
           );
         })}

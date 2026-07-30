@@ -63,15 +63,7 @@ function useKeyboardControls(handlers: {
   }, []);
 }
 
-export function ReplayView({
-  basePath,
-  upright,
-  onToggleUpright,
-}: {
-  basePath: string;
-  upright: boolean;
-  onToggleUpright: () => void;
-}) {
+export function ReplayView({ basePath }: { basePath: string }) {
   const [index, setIndex] = useState<ReplayIndex>();
   const [events, setEvents] = useState<MjaiEvent[]>();
   const [selectedReplay, setSelectedReplay] = useState<string>();
@@ -245,13 +237,9 @@ export function ReplayView({
           <span>Reveal all hands</span>
         </label>
 
-        <label className="field field--check">
-          <input type="checkbox" checked={upright} onChange={onToggleUpright} />
-          <span>Upright tiles</span>
-        </label>
       </div>
 
-      <GameBoard snapshot={snapshot} viewer={viewer} revealAll={revealAll} upright={upright} />
+      <GameBoard snapshot={snapshot} viewer={viewer} revealAll={revealAll} />
 
       <div className="replay__controls">
         <button type="button" className="button" onClick={first} disabled={frame === 0}>

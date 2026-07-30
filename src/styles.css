@@ -386,6 +386,17 @@ code {
 
 /* ---------------------------------------------------------------------------
    The table
+
+   Seats keep their places around the felt, but every hand, meld row and river is
+   a horizontal run of tiles reading left to right, top to bottom. The top and
+   bottom seats span the full width so the viewer's 14 large tiles are never
+   squeezed into a narrow centre column; the two side seats share the middle row
+   with the round info.
+
+   Footprints are reserved, not fitted. A hand is 14 tiles wide while its owner
+   holds a draw and 13 after discarding, and a river grows from nothing to four
+   rows — sizing to content made every control below the board jump on each step
+   through the history.
    --------------------------------------------------------------------------- */
 
 .board {
@@ -395,16 +406,14 @@ code {
 .board__felt {
   display: grid;
   grid-template-areas:
-    '.    top     .'
-    'left centre  right'
-    '.    bottom  .';
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 0.5rem;
-  align-items: center;
+    'top    top     top'
+    'left   centre  right'
+    'bottom bottom  bottom';
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
   justify-items: center;
   padding: 0.85rem;
-  min-height: 380px;
   background: var(--felt);
   border: 2px solid var(--felt-edge);
   border-radius: 14px;
@@ -413,52 +422,52 @@ code {
 
 .board__side {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.board__side--bottom {
-  grid-area: bottom;
   flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
 }
 
-/* column-reverse puts the seat plate and hand along the outer edge, mirroring
-   the bottom seat. */
 .board__side--top {
   grid-area: top;
-  flex-direction: column-reverse;
 }
-
 .board__side--left {
   grid-area: left;
-  flex-direction: row-reverse;
 }
-
 .board__side--right {
   grid-area: right;
-  flex-direction: row;
+}
+.board__side--bottom {
+  grid-area: bottom;
 }
 
-/* Hands run along their edge; side seats stack vertically. */
-.board__hand {
+/* Hands and melds: always horizontal. */
+.board__hand,
+.board__melds {
   display: flex;
-  gap: 2px;
-}
-
-.board__hand--bottom,
-.board__hand--top {
   flex-direction: row;
+  gap: 2px;
+  justify-content: center;
 }
 
+.board__melds {
+  gap: 0.3rem;
+}
+
+.board__meld {
+  display: flex;
+  flex-direction: row;
+  gap: 1px;
+}
+
+/* Reserve the widest a hand gets: 14 faces plus gaps and the drawn tile's gap. */
+.board__hand--bottom {
+  min-width: calc(14 * 44px * var(--tile-scale) + 40px);
+}
+
+.board__hand--top,
 .board__hand--left,
 .board__hand--right {
-  flex-direction: column;
-  /* Side hands stack vertically, so their height swings as the seat draws and
-     discards: 13 tiles at rest, 14 while holding a draw, fewer after a call.
-     Reserve the maximum — 14 faces plus the gaps and the drawn tile's offset —
-     or every control below the board moves on each step. */
-  min-height: calc(14 * 32px * var(--tile-scale) + 32px);
-  justify-content: flex-start;
+  min-width: calc(14 * 24px * var(--tile-scale) + 34px);
 }
 
 .board__drawn {
@@ -466,26 +475,16 @@ code {
   margin-left: 0.4rem;
 }
 
-.board__hand--left .board__drawn,
-.board__hand--right .board__drawn {
-  margin-left: 0;
-  margin-top: 0.4rem;
-}
-
-/* Rivers grow away from their player in blocks of six.
-
-   Their footprint is *reserved* rather than fitted, because a river grows from
-   nothing to three or four rows as a hand progresses. Letting it size to content
-   moved every control below the board while stepping through history. Same for
-   the side hands, which shorten by three tiles whenever a call is made. */
+/* Rivers read left to right, top to bottom, in blocks of six. */
 .board__river {
   display: grid;
+  grid-template-columns: repeat(6, auto);
   gap: 2px;
   align-content: start;
+  justify-content: center;
 }
 
-/* Tile face heights: xs 24px, sm 32px. Four rows plus gaps, scaled with the
-   felt so the reservation tracks --tile-scale. */
+/* Tile face heights: xs 24px, sm 32px. Four rows plus gaps. */
 .board__river--bottom {
   min-height: calc(4 * 32px * var(--tile-scale) + 6px);
   min-width: calc(6 * 24px * var(--tile-scale) + 10px);
@@ -498,59 +497,11 @@ code {
   min-width: calc(6 * 18px * var(--tile-scale) + 10px);
 }
 
-.board__river--bottom,
-.board__river--top {
-  grid-template-columns: repeat(6, auto);
-}
-
-.board__river--left,
-.board__river--right {
-  grid-template-rows: repeat(6, auto);
-  grid-auto-flow: column;
-}
-
-/* With upright tiles, every river reads the way the page does — left to right,
-   top to bottom — rather than growing away from its owner. Per-seat flow only
-   makes sense when the tiles are also turned to face that seat; mixed together
-   it just makes the discard order hard to follow. */
-.board__felt--upright .board__river--left,
-.board__felt--upright .board__river--right {
-  grid-template-rows: none;
-  grid-template-columns: repeat(6, auto);
-  grid-auto-flow: row;
-}
-
-.board__river-empty {
-  display: block;
-  width: 1px;
-  height: 1px;
-}
-
-.board__melds {
-  display: flex;
-  gap: 0.3rem;
-}
-
-.board__melds--left,
-.board__melds--right {
-  flex-direction: column;
-}
-
-.board__meld {
-  display: flex;
-  gap: 1px;
-}
-
-.board__melds--left .board__meld,
-.board__melds--right .board__meld {
-  flex-direction: column;
-}
-
 .plate {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.15rem 0.45rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.34);
   color: #fff;
@@ -568,6 +519,10 @@ code {
 
 .plate__wind {
   font-weight: 700;
+}
+
+.plate__label {
+  opacity: 0.8;
 }
 
 .plate__score {
@@ -588,7 +543,7 @@ code {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.85rem;
   background: rgba(0, 0, 0, 0.28);
   border-radius: 10px;
   color: #fff;
@@ -614,68 +569,30 @@ code {
   margin-top: 0.25rem;
 }
 
-/* Narrow screens cannot fit four hands around a felt, so the side seats
-   collapse into a stacked summary above and below. */
-/* Narrow screens cannot fit four hands around a felt. The grid gives way to a
-   single column: opponents above, then the centre, then your own hand. Tiles
-   keep their rotation so it stays obvious whose they are. */
-@container (max-width: 700px) {
+/* Narrow screens: one column, opponents above, you at the bottom. */
+@container (max-width: 720px) {
   .board__felt {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    min-height: 0;
-    /* One override shrinks every tile on the felt at once. */
+    grid-template-areas:
+      'top'
+      'left'
+      'right'
+      'centre'
+      'bottom';
+    grid-template-columns: minmax(0, 1fr);
     --tile-scale: 0.78;
-  }
-
-  .board__side--top {
-    order: 1;
-  }
-  .board__side--left {
-    order: 2;
-  }
-  .board__side--right {
-    order: 3;
-  }
-  .board__centre {
-    order: 4;
-  }
-  .board__side--bottom {
-    order: 5;
-  }
-
-  .board__side {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    max-width: 100%;
-  }
-
-  .board__side--bottom,
-  .board__side--top {
-    flex-direction: column;
   }
 
   .board__hand,
   .board__melds {
-    flex-direction: row;
     flex-wrap: wrap;
-    justify-content: center;
+  }
+
+  .board__hand--bottom,
+  .board__hand--top,
+  .board__hand--left,
+  .board__hand--right {
+    min-width: 0;
     max-width: 100%;
-  }
-
-  .board__meld {
-    flex-direction: row;
-  }
-
-  /* Side rivers flow in rows here rather than columns. */
-  .board__river--left,
-  .board__river--right {
-    grid-template-rows: none;
-    grid-template-columns: repeat(6, auto);
-    grid-auto-flow: row;
   }
 }
 

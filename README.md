@@ -175,12 +175,23 @@ determined reader could pull them from the JSON. Redacting properly means
 rewriting deals and draws to placeholders and teaching the replay engine to track
 them — worth doing, not done.
 
-### Tile orientation
+### Tile orientation and layout
 
-Each seat's tiles are turned to face that seat, so a tile's top edge points away
-from its owner: 270 degrees for the seat on the right, 180 across, 90 on the left.
-An **Upright tiles** toggle turns that off for legibility, and the preference
-persists.
+Every seat's tiles are upright, in horizontal rows reading left to right, top to
+bottom. An earlier version turned each seat's tiles to face it, the way a real
+table does, and it read worse on both counts: rotated faces are harder to
+identify at a glance, and a river that grows away from its owner scrambles the
+discard order for three of the four seats.
+
+The one rotation kept is the riichi declaration tile, laid sideways in the river.
+That is not an orientation preference — it records *when* riichi was called, so
+it carries information the board would otherwise lose.
+
+Footprints on the felt are reserved rather than fitted: a hand is 14 tiles wide
+while its owner holds a draw and 13 after discarding, and a river grows from
+nothing to four rows. Sizing to content made every control below the board jump
+on each step through a hand's history. A test walks all frames of a hand and
+asserts the geometry does not move.
 
 ### Difficulty
 

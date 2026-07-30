@@ -44,15 +44,6 @@ export default function App() {
   const [route, setRoute] = useState<Route>(() => parseHash());
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
 
-  const [upright, setUpright] = useState<boolean>(() => {
-    try {
-      // Defaults on. The turned-to-face-each-seat table is more authentic, but
-      // it makes discard order harder to follow, and this is a study tool.
-      return localStorage.getItem('mahjong-puzzles:upright:v2') !== '0';
-    } catch {
-      return true;
-    }
-  });
   const [band, setBand] = useState<(typeof DIFFICULTY_BANDS)[number]['id']>('all');
   const [seed, setSeed] = useState(() => 1);
   const [cursor, setCursor] = useState(0);
@@ -130,18 +121,6 @@ export default function App() {
     setSeed((previous) => previous + 1);
   }, []);
 
-  const toggleUpright = useCallback(() => {
-    setUpright((current) => {
-      const next = !current;
-      try {
-        localStorage.setItem('mahjong-puzzles:upright:v2', next ? '1' : '0');
-      } catch {
-        // A missing preference is harmless.
-      }
-      return next;
-    });
-  }, []);
-
   const onBandChange = useCallback((next: (typeof DIFFICULTY_BANDS)[number]['id']) => {
     setBand(next);
     setAnswer(undefined);
@@ -209,10 +188,6 @@ export default function App() {
               </div>
 
               <div className="sessionbar__group">
-                <label className="field field--check">
-                  <input type="checkbox" checked={upright} onChange={toggleUpright} />
-                  <span>Upright tiles</span>
-                </label>
                 <span className="sessionbar__streak">
                   streak <strong>{progress.currentStreak}</strong>
                 </span>
@@ -237,7 +212,6 @@ export default function App() {
                 onNext={onNext}
                 index={linked ? 0 : cursor}
                 total={linked ? 1 : session.length}
-                upright={upright}
               />
             ) : (
               <section className="panel">
@@ -249,11 +223,7 @@ export default function App() {
         )}
 
         {route.view === 'replay' && (
-          <ReplayView
-            basePath={import.meta.env.BASE_URL}
-            upright={upright}
-            onToggleUpright={toggleUpright}
-          />
+          <ReplayView basePath={import.meta.env.BASE_URL} />
         )}
 
         {bank && route.view === 'progress' && (
