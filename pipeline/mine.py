@@ -1,33 +1,29 @@
 """Stage 3: mine candidate positions with the offline model.
 
-STATUS: NOT IMPLEMENTED. The interface, the feature contract and the selection
-criteria are settled; the model itself is not trained yet. `rank_actions` raises
-NotImplementedError rather than returning plausible-looking numbers, because a
-puzzle bank built on invented evaluations would be worse than no bank at all.
+STATUS: scoring works. Loads a checkpoint from pipeline.train, verifies its
+feature-layout version, and ranks legal discards for a position, writing
+candidates for verify.py.
 
-What has to exist before this runs:
+What this stage deliberately does NOT do:
 
-1. A trained model. Mortal's weights are deliberately unpublished, so this
-   trains its own on the CC BY 4.0 houou dump. Mortal's own recipe is the
-   reference: a ResNet-1D over a 34-long tile axis (`conv_channels = 192`,
-   `num_blocks = 40`, roughly 10-12M parameters), a dueling-DQN head over legal
-   actions, and Conservative Q-Learning for the offline phase
-   (`min_q_weight = 5`). A GRU side-network predicts the distribution over all
-   24 final-rank permutations, which is what converts raw game state into
-   expected placement.
+  - Apply the publication criteria. A single evaluator cannot corroborate
+    itself, so criteria.py's agreement test would reject everything anyway.
+  - Emit a per-action expected value. This network has a *state* value head,
+    not a per-action Q, so it cannot price individual actions. Deriving a
+    placement-point figure from the policy would be a fabricated number.
+    akochan (verify.py) supplies both the second opinion and the EV.
 
-   Budget ~1-3 days on one consumer GPU for the offline phase. The online
-   self-play phase that took Mortal from good to strongest needs ~10M hanchan
-   at ~40K/hour, so 2-4 weeks — skippable, since Mortal's own strength page
-   shows late versions separated by only 0.01-0.03 average placement.
-
-2. A feature encoder shared with training, turning `position` dicts into model
-   input. It must be the identical transform used at training time; a mismatch
-   here produces confident nonsense.
+So mining produces ranked candidates and a policy distribution; it does not
+produce publishable puzzles on its own.
 
 Mining does not need the model to be excellent. It needs the *ranking* to be
 roughly right, because everything close is thrown away downstream by the margin
 test in criteria.py and by akochan disagreement in verify.py.
+
+Measured on the 2010 houou set: the 2.2M-parameter default reaches ~69%
+agreement with the actual houou discard on held-out games, 95% top-3. Agreement
+with a human is not correctness — it is a measure of how well the model predicts
+houou-level play, which is exactly what a candidate *finder* needs.
 """
 
 from __future__ import annotations
@@ -37,33 +33,125 @@ import json
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
+_HONORS = ("E", "S", "W", "N", "P", "F", "C")
+
+
+def _index_to_tile(index: int) -> str:
+    """0..33 -> mjai notation. Mirrors features.tile_to_index."""
+    if index >= 27:
+        return _HONORS[index - 27]
+    suit = "mps"[index // 9]
+    return "{}{}".format(index % 9 + 1, suit)
+
 
 class ModelNotAvailable(NotImplementedError):
     """Raised when mining is attempted without a trained model."""
 
 
 class OfflineModel:
-    """Wraps the trained Q-network.
+    """Wraps the trained network.
 
-    Loads a checkpoint and scores legal actions for a position. Kept as a class
-    so the checkpoint is read once and reused across millions of positions.
+    Loads a checkpoint once and scores legal actions for a position, so the
+    weights are read a single time across millions of positions.
     """
 
-    def __init__(self, checkpoint_path: str) -> None:
+    def __init__(self, checkpoint_path: str, device: Optional[str] = None) -> None:
         self.checkpoint_path = checkpoint_path
+        try:
+            import torch
+
+            from pipeline.features import IN_CHANNELS, LAYOUT_VERSION, NUM_ACTIONS
+            from pipeline.train import DiscardNet, pick_device
+        except ImportError as exc:
+            raise ModelNotAvailable(
+                "scoring needs torch and numpy: pip install torch numpy"
+            ) from exc
+
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        except FileNotFoundError as exc:
+            raise ModelNotAvailable(
+                "no checkpoint at {}; train one first with pipeline.train".format(checkpoint_path)
+            ) from exc
+
+        config = checkpoint.get("config") or {}
+
+        # A checkpoint is meaningless without the exact feature encoding it was
+        # trained under. Refusing here beats silently scoring garbage: a layout
+        # mismatch does not crash, it just quietly produces confident nonsense.
+        stored_layout = config.get("layout_version")
+        if stored_layout != LAYOUT_VERSION:
+            raise ModelNotAvailable(
+                "checkpoint feature layout v{} does not match this code's v{}; "
+                "retrain or check out the matching revision".format(stored_layout, LAYOUT_VERSION)
+            )
+        if config.get("in_channels") != IN_CHANNELS or config.get("num_actions") != NUM_ACTIONS:
+            raise ModelNotAvailable(
+                "checkpoint shape {}x{} does not match this code's {}x{}".format(
+                    config.get("in_channels"),
+                    config.get("num_actions"),
+                    IN_CHANNELS,
+                    NUM_ACTIONS,
+                )
+            )
+
+        self._torch = torch
+        self.device = device or pick_device(None)
+        self.has_value = bool(config.get("value_head", True))
+        self.model = DiscardNet(
+            channels=int(config.get("channels", 128)),
+            blocks=int(config.get("blocks", 10)),
+            value_head=self.has_value,
+        )
+        self.model.load_state_dict(checkpoint["model"])
+        self.model.to(self.device).eval()
+        self.samples_seen = int(checkpoint.get("samples_seen", 0))
 
     def rank_actions(self, position: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Score every legal action for `position`.
+        """Score every legal action for `position`, best first.
 
-        Returns a list of {"id", "label", "ev", "policy"} ordered best-first,
-        where `ev` is expected final placement points and `policy` is the
-        softmax-over-Q probability used for the entropy-based difficulty proxy
-        and for the session cross-entropy diagnostic.
+        Returns {"id", "tile", "policy", "logit"} per legal discard, plus the
+        state value under "value" on each entry when the checkpoint has a value
+        head.
+
+        Note what is deliberately absent: a per-action `ev` in placement points.
+        This network has a *state* value head, not a per-action Q, so it cannot
+        price individual actions. akochan supplies that number. Inventing one
+        here from the policy would be a fabricated expected value.
         """
-        raise ModelNotAvailable(
-            "no trained model available; see the module docstring in pipeline/mine.py "
-            "for what has to be built first"
-        )
+        torch = self._torch
+        from pipeline.features import encode, legal_discard_mask, IN_CHANNELS, TILE_AXIS
+        import numpy as np
+
+        features = np.zeros((1, IN_CHANNELS, TILE_AXIS), dtype=np.float32)
+        encode(position, features[0])
+        mask = legal_discard_mask(position)
+
+        with torch.no_grad():
+            x = torch.from_numpy(features).to(self.device)
+            logits, value = self.model(x)
+            logits = logits[0].float().cpu()
+            masked = logits.masked_fill(~torch.from_numpy(mask), float("-inf"))
+            probabilities = torch.softmax(masked, dim=-1).numpy()
+            state_value = float(value[0]) if value is not None else None
+
+        from pipeline.features import TILE_AXIS as AXIS
+
+        ranked: List[Dict[str, Any]] = []
+        for index in range(AXIS):
+            if not mask[index]:
+                continue
+            ranked.append(
+                {
+                    "id": "discard:{}".format(_index_to_tile(index)),
+                    "tile": _index_to_tile(index),
+                    "policy": float(probabilities[index]),
+                    "logit": float(logits[index]),
+                    "value": state_value,
+                }
+            )
+        ranked.sort(key=lambda entry: -entry["policy"])
+        return ranked
 
     def policy_entropy(self, ranked: Sequence[Dict[str, Any]]) -> float:
         """Entropy of the action distribution, in nats. High entropy means the
@@ -87,17 +175,52 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args(argv)
 
-    model = OfflineModel(args.checkpoint)
     try:
-        model.rank_actions({})
+        model = OfflineModel(args.checkpoint)
     except ModelNotAvailable as exc:
-        sys.stderr.write("mine.py is not runnable yet: {}\n".format(exc))
+        sys.stderr.write("cannot load a model: {}\n".format(exc))
         return 2
 
-    # Once a model exists: read decisions, rank actions, attach the ukeire
-    # baseline for the naive-disagreement filter, and write candidates for
-    # verify.py. Unreachable until then, so left unwritten rather than guessed.
-    raise AssertionError("unreachable")
+    sys.stderr.write(
+        "loaded {} (trained on {} samples), scoring on {}\n".format(
+            args.checkpoint, model.samples_seen, model.device
+        )
+    )
+
+    written = 0
+    with open(args.output, "w", encoding="utf-8") as out:
+        for line_number, line in enumerate(open(args.input, "r", encoding="utf-8"), start=1):
+            if args.limit and written >= args.limit:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            position = record.get("position") or {}
+            ranked = model.rank_actions(position)
+            if len(ranked) < 2:
+                continue
+
+            candidate = {
+                "kind": record.get("kind", "discard"),
+                "position": position,
+                "gameId": record.get("gameId"),
+                "decisionIndex": record.get("decisionIndex"),
+                "modelRanking": [entry["id"] for entry in ranked],
+                "policy": {entry["id"]: entry["policy"] for entry in ranked},
+                "policyEntropy": model.policy_entropy(ranked),
+                "actionTaken": record.get("actionTaken"),
+            }
+            out.write(json.dumps(candidate, separators=(",", ":"), sort_keys=True))
+            out.write("\n")
+            written += 1
+
+    sys.stderr.write("wrote {} candidates to {}\n".format(written, args.output))
+    # The publication criteria are NOT applied here. A single evaluator cannot
+    # corroborate itself, and this network has no per-action EV, so verify.py
+    # (akochan) still has to supply both the second opinion and the placement
+    # numbers before anything is publishable.
+    return 0
 
 
 if __name__ == "__main__":
