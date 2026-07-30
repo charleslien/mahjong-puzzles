@@ -48,7 +48,7 @@ export default function App() {
     try {
       // Defaults on. The turned-to-face-each-seat table is more authentic, but
       // it makes discard order harder to follow, and this is a study tool.
-      return localStorage.getItem('mahjong-puzzles:upright') !== '0';
+      return localStorage.getItem('mahjong-puzzles:upright:v2') !== '0';
     } catch {
       return true;
     }
@@ -134,7 +134,7 @@ export default function App() {
     setUpright((current) => {
       const next = !current;
       try {
-        localStorage.setItem('mahjong-puzzles:upright', next ? '1' : '0');
+        localStorage.setItem('mahjong-puzzles:upright:v2', next ? '1' : '0');
       } catch {
         // A missing preference is harmless.
       }

@@ -11,7 +11,11 @@ function bankUrl(path: string): string {
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(bankUrl(path));
+  // `cache: 'no-cache'` forces revalidation. The bank is regenerated wholesale
+  // and its filenames are not content-hashed, so a cached manifest can point at
+  // a shard that no longer exists — which is how a stale bank survived a deploy
+  // and silently served positions without replay history.
+  const response = await fetch(bankUrl(path), { cache: 'no-cache' });
   if (!response.ok) {
     throw new Error(`failed to load ${path}: ${response.status} ${response.statusText}`);
   }

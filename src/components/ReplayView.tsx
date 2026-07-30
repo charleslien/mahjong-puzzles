@@ -86,7 +86,7 @@ export function ReplayView({
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
-    fetch(`${basePath}replays/index.json`)
+    fetch(`${basePath}replays/index.json`, { cache: 'no-cache' })
       .then((response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         return response.json() as Promise<ReplayIndex>;
@@ -108,7 +108,7 @@ export function ReplayView({
   useEffect(() => {
     if (!meta) return;
     setEvents(undefined);
-    fetch(`${basePath}replays/${meta.file}`)
+    fetch(`${basePath}replays/${meta.file}`, { cache: 'no-cache' })
       .then((response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         return response.json() as Promise<MjaiEvent[]>;
