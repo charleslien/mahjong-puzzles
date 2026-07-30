@@ -7,12 +7,28 @@ const SEAT_WINDS = ['E', 'S', 'W', 'N'] as const;
 
 type Position = 'bottom' | 'right' | 'top' | 'left';
 
-/** Rotation applied to a seat's tiles so they face that player. */
+/**
+ * Rotation applied to a seat's tiles so they face that player.
+ *
+ * A tile's top edge points *away* from its owner, toward the table centre. So
+ * the seat on the right needs its top pointing left, which is a counter-clockwise
+ * quarter turn (270), and the seat on the left needs the clockwise one (90).
+ * Getting these two the wrong way round leaves the side seats reading upside
+ * down from their own chairs.
+ */
 const ROTATION: Record<Position, Rotation> = {
   bottom: 0,
-  right: 90,
+  right: 270,
   top: 180,
-  left: 270,
+  left: 90,
+};
+
+/** Everything upright, for legibility over realism. */
+const NO_ROTATION: Record<Position, Rotation> = {
+  bottom: 0,
+  right: 0,
+  top: 0,
+  left: 0,
 };
 
 /** Rivers are laid out in rows of six, growing away from the player. */
@@ -26,12 +42,14 @@ function River({
   seat,
   position,
   size,
+  rotations,
 }: {
   seat: SeatState;
   position: Position;
   size: TileSize;
+  rotations: Record<Position, Rotation>;
 }) {
-  const rotation = ROTATION[position];
+  const rotation = rotations[position];
   const rows: Tile[][] = [];
   for (let i = 0; i < seat.river.length; i += RIVER_COLUMNS) {
     rows.push(seat.river.slice(i, i + RIVER_COLUMNS).map((entry) => entry.tile));
@@ -62,10 +80,12 @@ function Melds({
   seat,
   position,
   size,
+  rotations,
 }: {
   seat: SeatState;
   position: Position;
   size: TileSize;
+  rotations: Record<Position, Rotation>;
 }) {
   if (seat.melds.length === 0) return null;
   return (
@@ -78,7 +98,7 @@ function Melds({
               // A closed kan shows its outer tiles face-down.
               tile={meld.kind === 'ankan' && (j === 0 || j === 3) ? undefined : tile}
               size={size}
-              rotation={ROTATION[position]}
+              rotation={rotations[position]}
             />
           ))}
         </span>
@@ -95,6 +115,7 @@ function Hand({
   interactive,
   onSelect,
   accentFor,
+  rotations,
 }: {
   seat: SeatState;
   position: Position;
@@ -103,8 +124,9 @@ function Hand({
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
   accentFor?: (tile: Tile) => 'best' | 'good' | 'bad' | undefined;
+  rotations: Record<Position, Rotation>;
 }) {
-  const rotation = ROTATION[position];
+  const rotation = rotations[position];
 
   // Contents genuinely unrecorded: draw the right number of backs and never
   // reveal them, whatever the reveal toggle says.
@@ -197,6 +219,8 @@ export interface GameBoardProps {
   viewer: Seat;
   /** Show every seat's tiles rather than only the viewer's. */
   revealAll?: boolean;
+  /** Draw every seat's tiles upright instead of turned to face its owner. */
+  upright?: boolean;
   /** Make the viewer's hand clickable. */
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
@@ -211,10 +235,12 @@ export function GameBoard({
   snapshot,
   viewer,
   revealAll = false,
+  upright = false,
   interactive = false,
   onSelect,
   accentFor,
 }: GameBoardProps) {
+  const rotations = upright ? NO_ROTATION : ROTATION;
   const layout = seatLayout(viewer);
   const positions: Array<[Position, Seat]> = [
     ['bottom', layout.bottom],
@@ -235,8 +261,8 @@ export function GameBoard({
 
           return (
             <div className={`board__side board__side--${position}`} key={position}>
-              <Melds seat={state} position={position} size={riverSize} />
-              <River seat={state} position={position} size={riverSize} />
+              <Melds seat={state} position={position} size={riverSize} rotations={rotations} />
+              <River seat={state} position={position} size={riverSize} rotations={rotations} />
               <Hand
                 seat={state}
                 position={position}
@@ -245,6 +271,7 @@ export function GameBoard({
                 interactive={interactive && seat === viewer}
                 onSelect={onSelect}
                 accentFor={seat === viewer ? accentFor : undefined}
+                rotations={rotations}
               />
               <SeatPlate
                 seat={seat}

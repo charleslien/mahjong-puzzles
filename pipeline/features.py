@@ -3,8 +3,13 @@
 Two hard constraints shape this, both measured rather than assumed:
 
 1. Dense features must never be precomputed to disk. At 20M decisions a dense
-   fp32 array is ~700GB; the compact records extract.py already emits are ~3.4GB.
-   So encoding happens per batch, at training time.
+   fp32 array is ~700GB, so encoding happens per batch, at training time.
+
+   For scale: the records extract.py emits measure ~650 bytes each, so 20M
+   decisions is ~13GB of JSON, or roughly 2GB gzipped. Both extract.py and
+   train.py handle gzip, which is what makes a multi-million-decision corpus
+   practical on a laptop. (An earlier version of this note claimed ~3.4GB for
+   20M records; that described a compact binary format that was never built.)
 
 2. Encoding must stay well ahead of the model. Measured on an M5: the reduced
    model trains at ~6.3k samples/sec on MPS, and a numpy encoder of this shape

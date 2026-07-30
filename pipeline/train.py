@@ -34,8 +34,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
-import math
 import os
 import random
 import sys
@@ -126,10 +126,17 @@ class DiscardNet(nn.Module):
         return self.policy(h), value
 
 
+def open_records(path: str):
+    """Open a plain or gzipped JSONL file."""
+    if path.endswith(".gz"):
+        return gzip.open(path, "rt", encoding="utf-8")
+    return open(path, "r", encoding="utf-8")
+
+
 def iter_records(path: str, repeat: bool) -> Iterator[Dict[str, Any]]:
     """Stream decision records, optionally looping forever."""
     while True:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open_records(path) as handle:
             for line in handle:
                 line = line.strip()
                 if line:

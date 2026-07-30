@@ -1121,3 +1121,45 @@ code {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+
+/* ---------------------------------------------------------------------------
+   In-puzzle history review
+   --------------------------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow);
+}
+
+.history__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.history__scrub {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--accent);
+}
+
+.history__count {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 4.5rem;
+  text-align: right;
+}
+
+.history__line {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

@@ -143,10 +143,13 @@ describe('puzzle bank contents', () => {
     }
   });
 
-  it('offers one action per distinct tile in hand', () => {
+  it('offers one action per distinct tile index in hand', () => {
     for (const puzzle of puzzles) {
       if (puzzle.kind !== 'discard') continue;
-      const distinct = new Set(puzzle.position.hand).size;
+      // Distinct *indices*, not distinct strings: a red five and its plain twin
+      // are two strings but one discard choice, since acceptance cannot tell
+      // them apart.
+      const distinct = new Set(puzzle.position.hand.map(tileToIndex)).size;
       expect(puzzle.actions.length, `${puzzle.id}`).toBe(distinct);
     }
   });
@@ -224,7 +227,7 @@ describe('puzzle bank contents', () => {
   });
 });
 
-describe('seed bank answers match a fresh ukeire computation', () => {
+describe('bank answers match a fresh ukeire computation', () => {
   it('recomputes the same best discards', () => {
     const seeds = puzzles.filter((puzzle) => puzzle.evaluation.unit === 'ukeire_tiles');
     expect(seeds.length).toBeGreaterThan(0);
@@ -234,26 +237,41 @@ describe('seed bank answers match a fresh ukeire computation', () => {
       const counts = new Array<number>(NUM_TILE_TYPES).fill(0);
       for (const tile of position.hand) counts[tileToIndex(tile)] += 1;
 
+      // Must mirror the generator exactly: everything the acting player can see.
       const visible = new Array<number>(NUM_TILE_TYPES).fill(0);
       for (const tile of position.hand) visible[tileToIndex(tile)] += 1;
+      for (const meld of position.melds) {
+        for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
+      }
+      for (const melds of position.opponentMelds) {
+        for (const meld of melds) {
+          for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
+        }
+      }
       for (const river of position.rivers) {
         for (const tile of river) visible[tileToIndex(tile)] += 1;
       }
       for (const tile of position.doraIndicators) visible[tileToIndex(tile)] += 1;
 
-      const options = analyzeDiscards(counts, 0, visible);
+      const meldCount = Math.min(4, position.melds.length) as 0 | 1 | 2 | 3 | 4;
+      const options = analyzeDiscards(counts, meldCount, visible);
       const bestShanten = options[0].shantenAfter;
       const bestUkeire = options[0].ukeire;
 
+      // Compare by tile index, since the stored action names whichever copy the
+      // hand actually holds — plain or red.
       const recomputedBest = new Set(
         options
           .filter((option) => option.shantenAfter === bestShanten && option.ukeire === bestUkeire)
-          .map((option) => `discard:${option.tile}`),
+          .map((option) => tileToIndex(option.tile)),
+      );
+      const storedBest = new Set(
+        puzzle.acceptedActionIds.map((id) => tileToIndex(id.replace('discard:', ''))),
       );
 
-      expect(new Set(puzzle.acceptedActionIds), `${puzzle.id}`).toEqual(recomputedBest);
+      expect(storedBest, `${puzzle.id}`).toEqual(recomputedBest);
       // Hands are filtered to a solvable range at generation time.
-      expect(shanten(counts)).toBeLessThanOrEqual(2);
+      expect(shanten(counts, meldCount)).toBeLessThanOrEqual(2);
     }
   });
 });

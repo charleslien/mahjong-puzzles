@@ -9,10 +9,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:seed": "vite-node scripts/build-seed-bank.ts",
     "typecheck": "tsc -b --noEmit",
     "build:replays": "vite-node scripts/build-replays.ts",
-    "build:tiles": "node scripts/build-tiles.mjs"
+    "build:tiles": "node scripts/build-tiles.mjs",
+    "build:puzzles": "vite-node scripts/build-puzzles.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

@@ -4,24 +4,29 @@ Riichi mahjong decision drills, mined from real games and graded by evaluation
 loss. A static site, deployed on Vercel, with an offline generation pipeline that
 never runs in the browser.
 
-**Current state:** the site is complete and playable against 120 computed
-tile-efficiency drills. The AI-evaluated puzzle bank is not built yet — two
-pipeline stages need a trained model and an akochan build. See
-[pipeline/TODO.md](pipeline/TODO.md) for exactly what remains.
+**Current state:** the site is complete and playable against 220 puzzles mined
+from real Tenhou houou-room hanchan, each with its hand history replayable in
+context. The *positions* are real; the *evaluation* is still the tile-efficiency
+baseline rather than an AI eval. A discard model now trains on real data and
+reaches 66.8% agreement with houou play on held-out games — wiring it in as the
+evaluator is the remaining step. See [pipeline/TODO.md](pipeline/TODO.md).
 
 ## Quick start
 
 ```bash
 npm install
-npm run build:seed     # generate the puzzle bank into public/puzzles/
+npm run build:puzzles -- pipeline/data/2010 220   # mine the bank from real logs
 npm run build:replays  # generate simulated replay logs into public/replays/
 npm run dev            # http://localhost:5173/
 npm test               # 65 tests
 python3 -m unittest discover -s pipeline -t .   # 65 tests
 ```
 
-The tile artwork is committed, so `npm run build:tiles` is only needed to
-regenerate it — it takes the path to a clone of
+The puzzle bank and tile artwork are both committed, so those build steps are
+only needed to regenerate them. `build:puzzles` wants a directory of mjai logs —
+grab a year from the
+[tenhou-to-mjai releases](https://github.com/NikkeTryHard/tenhou-to-mjai/releases).
+`build:tiles` takes the path to a clone of
 [riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles).
 
 ## Deploying
@@ -152,10 +157,30 @@ The seed bank is `ukeire_tiles`. Its answers are *computed*, not authored: hands
 are dealt from a shuffled wall under a fixed seed and scored by the shanten/ukeire
 library, so nothing in the shipped bank claims an evaluation it did not perform.
 
-One consequence worth knowing: seed positions are synthetic, so a river may
-contain tiles a real player holding that hand would not have discarded. They
-drill tile efficiency honestly; they are not realistic game states. Mined
-positions will be.
+Positions are real, which matters more than it sounds. The first version of this
+bank dealt synthetic hands from a shuffled wall, and it showed a random round
+number against flat 25000 scores — a board that cannot exist, since by East-3 the
+points have moved. Real positions carry the real round, the real scores, and the
+real hand history.
+
+### Replaying a hand
+
+Every mined puzzle ships the mjai events for its hand up to the decision, so the
+trainer can step back through how the position arose without leaving the puzzle.
+Opponents' hands stay concealed until the answer is given.
+
+One honest caveat: real logs record every seat's tiles, so those events do contain
+opponents' hands. The board never renders them before you answer, but a
+determined reader could pull them from the JSON. Redacting properly means
+rewriting deals and draws to placeholders and teaching the replay engine to track
+them — worth doing, not done.
+
+### Tile orientation
+
+Each seat's tiles are turned to face that seat, so a tile's top edge points away
+from its owner: 270 degrees for the seat on the right, 180 across, 90 on the left.
+An **Upright tiles** toggle turns that off for legibility, and the preference
+persists.
 
 ### Difficulty
 
@@ -180,10 +205,28 @@ needed: even the Mortal-scale network over 100M samples is ~35 hours locally
 against 25 days on CPU. `--device` picks the best backend available.
 
 ```bash
-python3 -m pipeline.extract --input data/logs/2024 --output data/decisions.jsonl
-python3 -m pipeline.train --input data/decisions.jsonl --out data/model.pt \
-    --holdout data/holdout.jsonl
+# Disjoint splits, by game: two decisions from one hand must never straddle them.
+python3 -m pipeline.extract --input pipeline/data/2010 \
+    --output pipeline/data/train.jsonl.gz --limit 14000
+python3 -m pipeline.extract --input pipeline/data/2010 \
+    --output pipeline/data/holdout.jsonl.gz --skip 14000 --limit 2000
+
+python3 -m pipeline.train --input pipeline/data/train.jsonl.gz \
+    --holdout pipeline/data/holdout.jsonl.gz --out pipeline/data/model.pt \
+    --samples 20000000
 ```
+
+**Result on real data.** 6.7M decisions from 14,000 hanchan of the 2010 houou
+set, holdout 959k decisions from 2,000 *different* games. The 2.2M-parameter
+default reaches **66.8% agreement** with the actual houou discard and 93.5%
+top-3 on held-out games, at 3,900-4,300 samples/sec end to end — below the
+6,310 pure-compute figure because JSON parsing is in the loop, and still an
+hour-scale run rather than a day-scale one.
+
+Worth knowing what that number is not: agreement with a human is not
+correctness. It measures how well the model predicts houou-level play, which is
+what makes it useful for *mining* candidate positions, not for declaring an
+answer right.
 
 Two facts that shaped the data path, both measured rather than assumed. Dense
 features are never written to disk — 20M decisions would be ~700GB dense against

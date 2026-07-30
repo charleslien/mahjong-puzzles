@@ -18,6 +18,7 @@
  */
 
 import type { Tile } from '../lib/tiles';
+import type { MjaiEvent } from '../lib/replay';
 
 export const SCHEMA_VERSION = 1;
 
@@ -170,6 +171,17 @@ export interface Puzzle {
   difficulty: number;
   evaluation: PuzzleEvaluation;
   source: PuzzleSource;
+  /**
+   * The mjai events for this hand up to (and excluding) the decision, so the
+   * trainer can step back through how the position arose.
+   *
+   * Known limitation: real logs reveal every seat's tiles, so the events here
+   * contain opponents' hands. The board never renders them before the answer is
+   * given, but a determined reader could pull them out of the JSON. Redacting
+   * them properly means rewriting draws and deals to placeholders, which the
+   * replay engine would then have to track — worth doing, not done yet.
+   */
+  history?: MjaiEvent[];
   /** Prose shown after answering. */
   explanation?: string;
 }

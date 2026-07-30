@@ -144,7 +144,22 @@ class GameState:
         self.last_draw[actor] = None
 
     def reach(self, event: Dict[str, Any]) -> None:
+        # The declaration is visible to everyone immediately, even though the
+        # 1000-point stick is not paid until the reach stands.
         self.riichi[int(event["actor"])] = True
+
+    def reach_accepted(self, event: Dict[str, Any]) -> None:
+        """Pay the riichi stick.
+
+        This matters for the placement labels and is easy to get wrong. The
+        `deltas` on hora/ryukyoku do *not* include the declarer's 1000-point
+        stick — only the winner collecting the pot. Verified against 6004 hand
+        boundaries in the 2010 houou set: accumulating deltas alone mismatches
+        the next hand's authoritative `scores` 1755 times, deducting on `reach`
+        still mismatches 67 times (reaches that were ronned before they stood),
+        and deducting on `reach_accepted` mismatches once.
+        """
+        self.scores[int(event["actor"])] -= 1000
 
     def dora(self, event: Dict[str, Any]) -> None:
         marker = event.get("dora_marker")
@@ -285,6 +300,10 @@ def extract_from_events(
             state.reach(event)
             continue
 
+        if kind == "reach_accepted":
+            state.reach_accepted(event)
+            continue
+
         if kind == "dora":
             state.dora(event)
             continue
@@ -333,21 +352,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--output", required=True, help="output JSONL path, or - for stdout")
     parser.add_argument("--limit", type=int, default=0, help="stop after N games (0 = all)")
     parser.add_argument(
+        "--skip",
+        type=int,
+        default=0,
+        help="skip the first N games, for carving a disjoint holdout split",
+    )
+    parser.add_argument(
         "--skip-errors",
         action="store_true",
         help="log and continue past unreadable files instead of failing",
     )
     args = parser.parse_args(argv)
 
-    out = sys.stdout if args.output == "-" else open(args.output, "w", encoding="utf-8")
+    # Records average ~650 bytes, so a multi-million-decision extract is worth
+    # gzipping: roughly 6x smaller, and train.py reads either form.
+    if args.output == "-":
+        out = sys.stdout
+    elif args.output.endswith(".gz"):
+        out = gzip.open(args.output, "wt", encoding="utf-8")
+    else:
+        out = open(args.output, "w", encoding="utf-8")
     games = 0
     records = 0
     failures = 0
 
     try:
+        seen_files = 0
         for path in iter_log_paths(args.input):
             if args.limit and games >= args.limit:
                 break
+            # Skipping by file keeps splits disjoint at game granularity; two
+            # decisions from one hand must never straddle train and holdout.
+            seen_files += 1
+            if seen_files <= args.skip:
+                continue
             try:
                 extracted = extract_from_events(
                     iter_events(path), game_id=os.path.basename(path)

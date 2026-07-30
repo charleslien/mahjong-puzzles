@@ -157,6 +157,48 @@ class ExtractTest(unittest.TestCase):
         self.assertEqual(placements[1], 1)
         self.assertEqual(placements[2], 2)
 
+    @staticmethod
+    def _log_with_reach(accepted):
+        """Declare riichi for seat 2 *after* its recorded discard.
+
+        Order matters: a riichi hand's discards are forced and therefore skipped
+        as decisions, so declaring before the discard would leave that seat with
+        no record to assert against.
+        """
+        log = build_log()
+        after_discard = log.index(
+            {"type": "dahai", "actor": 2, "pai": "P", "tsumogiri": False}
+        ) + 1
+        events = [{"type": "reach", "actor": 2}]
+        if accepted:
+            events.append({"type": "reach_accepted", "actor": 2})
+        log[after_discard:after_discard] = events
+        # Real houou logs carry deltas but no scores on hora.
+        for event in log:
+            if event["type"] == "hora":
+                del event["scores"]
+        return log
+
+    def test_riichi_stick_is_paid_on_acceptance(self):
+        """Real houou logs omit `scores` on hora and their `deltas` exclude the
+        declarer's 1000-point stick, so it has to be applied separately or every
+        placement label drifts.
+
+        Measured against 6004 hand boundaries in the 2010 houou set: deltas alone
+        mismatch the next hand's authoritative scores 1755 times, deducting on
+        `reach` mismatches 67 times, deducting on `reach_accepted` mismatches once.
+        """
+        records = extract_from_events(self._log_with_reach(accepted=True), game_id="t")
+        seat2 = next(r for r in records if r["actor"] == 2)
+        # 25000 dealt, -8000 delta, -1000 stick.
+        self.assertEqual(seat2["finalScore"], 16000)
+
+    def test_unaccepted_reach_pays_nothing(self):
+        # A reach ronned before it stands never pays its stick.
+        records = extract_from_events(self._log_with_reach(accepted=False), game_id="t")
+        seat2 = next(r for r in records if r["actor"] == 2)
+        self.assertEqual(seat2["finalScore"], 17000)
+
     def test_falls_back_to_deltas_without_scores(self):
         log = build_log()
         for event in log:

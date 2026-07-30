@@ -12,9 +12,17 @@ the rest works.
 
 ## 2. `extract.py` — done
 
-Replays mjai logs into decision records with final-placement labels. 16 tests.
+Replays mjai logs into decision records with final-placement labels. 18 tests.
 Handles post-call discards, hidden hands, called tiles leaving the river, and
 placement ties.
+
+**Correctness note that cost real debugging.** Houou logs carry `deltas` on
+hora/ryukyoku but no `scores`, and those deltas exclude the declarer's 1000-point
+riichi stick. Accumulating deltas alone disagreed with the next hand's
+authoritative `scores` at 1755 of 3064 boundaries. Deducting on `reach` still
+missed 67 (reaches ronned before they stood); deducting on `reach_accepted`
+missed 1 in 6004. Placement labels are the value head's entire target, so this
+would have quietly poisoned it.
 
 **Known gap:** only discard decisions are extracted. Call opportunities are
 invisible in mjai logs when declined — the log shows nothing where a player chose
@@ -31,9 +39,11 @@ puzzles.
 - [x] Training script (`train.py`). Policy + value heads, ResNet-1D, MPS by
       default. Verified end to end on extracted decisions at ~6000 samples/sec on
       an M5 — matching the standalone benchmark.
-- [ ] **Run it on real data.** Everything so far has only been smoke-tested on
-      simulated logs, where the model trivially memorises. No claim about real
-      accuracy can be made until it trains on a houou year with a held-out split.
+- [x] **Run it on real data.** 6.7M decisions from 14,000 hanchan of the 2010
+      houou set; holdout of 959k decisions from 2,000 disjoint games. The 2.2M-param
+      default reaches 66.8% agreement / 93.5% top-3 on held-out games at
+      ~3,900-4,300 samples/sec. Splits are carved by game, not by decision —
+      decisions from one hand are far too correlated to straddle a split.
 - [ ] Consider CQL for the value head. Plain regression on realised placement
       learns the behaviour policy's value, which is biased where humans rarely
       act. Not blocking: akochan can carry EV meanwhile.
