@@ -25,6 +25,8 @@ import os
 import sys
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence
 
+from pipeline.jsonl import open_text
+
 # mjai tile notation. Red fives carry an "r" suffix; honors are single letters.
 HONORS = ("E", "S", "W", "N", "P", "F", "C")
 
@@ -218,21 +220,14 @@ def _final_placements(final_scores: Sequence[int], oya_order: Sequence[int]) -> 
     return placements
 
 
-def _is_gzipped(path: str) -> bool:
-    """Sniff the magic bytes. The published dumps keep the .mjson extension on
-    gzipped payloads, so the filename cannot be trusted."""
-    try:
-        with open(path, "rb") as handle:
-            return handle.read(2) == b"\x1f\x8b"
-    except OSError:
-        return False
-
-
 def iter_events(path: str) -> Iterator[Dict[str, Any]]:
-    """Yield events from a plain or gzipped mjai log."""
-    opener = gzip.open if _is_gzipped(path) else open
+    """Yield events from a plain or gzipped mjai log.
+
+    Compression is detected by magic bytes rather than extension: the published
+    dumps keep the .mjson extension on gzipped payloads.
+    """
     try:
-        handle = opener(path, "rt", encoding="utf-8")
+        handle = open_text(path)
     except OSError as exc:
         raise UnsupportedLog("cannot open {}: {}".format(path, exc))
 
@@ -261,7 +256,7 @@ def extract_from_events(
     decision_index = 0
     final_scores: Optional[List[int]] = None
 
-    for event in events:
+    for event_index, event in enumerate(events):
         kind = event.get("type")
 
         if kind == "start_kyoku":
@@ -281,6 +276,13 @@ def extract_from_events(
                     {
                         "gameId": game_id,
                         "decisionIndex": decision_index,
+                        # Index of this `dahai` in the log's event sequence.
+                        # decisionIndex counts *recorded decisions*, so it cannot
+                        # locate the event; verify.py needs the event index to
+                        # replay the log up to the decision for akochan, and
+                        # recomputing it there would duplicate the filter
+                        # conditions above and be free to drift from them.
+                        "eventIndex": event_index,
                         "kind": "discard",
                         "actor": actor,
                         "position": state.observe(actor),

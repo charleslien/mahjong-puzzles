@@ -33,6 +33,8 @@ import json
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
+from pipeline.jsonl import iter_records
+
 _HONORS = ("E", "S", "W", "N", "P", "F", "C")
 
 
@@ -173,7 +175,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--output", required=True, help="candidates JSONL")
     parser.add_argument("--checkpoint", required=True, help="trained model checkpoint")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help=(
+            "score only every Nth decision. Decisions arrive in game order and, "
+            "within a game, in turn order, so taking a prefix would draw a whole "
+            "bank from a handful of games and from the opening turns of each. An "
+            "earlier bank built that way put 184 of 220 puzzles in East 1."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.stride < 1:
+        parser.error("--stride must be at least 1")
 
     try:
         model = OfflineModel(args.checkpoint)
@@ -189,13 +204,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     written = 0
     with open(args.output, "w", encoding="utf-8") as out:
-        for line_number, line in enumerate(open(args.input, "r", encoding="utf-8"), start=1):
+        # Gzip-aware: extract.py writes .jsonl.gz by default, and reading that
+        # with a plain open() died on the first line.
+        for index, record in enumerate(iter_records(args.input)):
             if args.limit and written >= args.limit:
                 break
-            line = line.strip()
-            if not line:
+            if index % args.stride:
                 continue
-            record = json.loads(line)
             position = record.get("position") or {}
             ranked = model.rank_actions(position)
             if len(ranked) < 2:
@@ -206,6 +221,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "position": position,
                 "gameId": record.get("gameId"),
                 "decisionIndex": record.get("decisionIndex"),
+                # Carried through for verify.py, which replays the original log
+                # to this point so akochan sees a real game rather than an
+                # invented one.
+                "eventIndex": record.get("eventIndex"),
+                "actor": record.get("actor"),
                 "modelRanking": [entry["id"] for entry in ranked],
                 "policy": {entry["id"]: entry["policy"] for entry in ranked},
                 "policyEntropy": model.policy_entropy(ranked),

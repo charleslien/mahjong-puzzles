@@ -34,7 +34,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import gzip
 import json
 import os
 import random
@@ -63,6 +62,7 @@ from pipeline.features import (
     encode,
     legal_discard_mask,
 )
+from pipeline.jsonl import open_text
 
 # Placement points, in the same units the site reports. Standard uma with the
 # 4th-place penalty folded in, so the value head learns something interpretable.
@@ -127,10 +127,13 @@ class DiscardNet(nn.Module):
 
 
 def open_records(path: str):
-    """Open a plain or gzipped JSONL file."""
-    if path.endswith(".gz"):
-        return gzip.open(path, "rt", encoding="utf-8")
-    return open(path, "r", encoding="utf-8")
+    """Open a plain or gzipped JSONL file.
+
+    Delegates to pipeline.jsonl, which sniffs magic bytes. This used to test
+    `path.endswith(".gz")`, which would have opened a gzipped `.mjson` dump —
+    the form the upstream releases actually ship — as text.
+    """
+    return open_text(path)
 
 
 def iter_records(path: str, repeat: bool) -> Iterator[Dict[str, Any]]:

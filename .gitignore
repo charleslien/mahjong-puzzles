@@ -4,6 +4,10 @@ dist/
 *.local
 .vite/
 
+# Vendored C++ dependency. Cloned and built by scripts/build-akochan.sh, which is
+# the committed record of how; the tree itself is ~500MB of sources and objects.
+vendor/
+
 # Pipeline working data — never commit multi-GB log dumps
 pipeline/data/
 pipeline/.venv/
@@ -11,3 +15,6 @@ pipeline/**/__pycache__/
 *.mjson
 *.mjson.gz
 *.db
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo

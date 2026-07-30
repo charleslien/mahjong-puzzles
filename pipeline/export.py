@@ -75,15 +75,72 @@ def to_puzzle(candidate: Dict[str, Any], puzzle_id: str) -> Dict[str, Any]:
     }
 
     if candidate.get("gameId"):
-        puzzle["source"]["gameId"] = candidate["gameId"]
+        # The stored id is the log's filename; the extension is noise on the site.
+        puzzle["source"]["gameId"] = str(candidate["gameId"]).replace(".mjson", "")
     if candidate.get("decisionIndex") is not None:
         puzzle["source"]["decisionIndex"] = int(candidate["decisionIndex"])
     if candidate.get("bestShanten") is not None:
         puzzle["bestShanten"] = int(candidate["bestShanten"])
-    if candidate.get("explanation"):
-        puzzle["explanation"] = candidate["explanation"]
+
+    # The hand's events, so the trainer can step back through how the position
+    # arose. Omitting this silently disables the replay controls, which is a
+    # feature regression rather than a missing nicety.
+    if candidate.get("history"):
+        puzzle["history"] = candidate["history"]
+
+    explanation = candidate.get("explanation") or explain(candidate, actions, accepted)
+    if explanation:
+        puzzle["explanation"] = explanation
 
     return puzzle
+
+
+def explain(
+    candidate: Dict[str, Any],
+    actions: Sequence[Dict[str, Any]],
+    accepted: Iterable[str],
+) -> str:
+    """A sentence about why the best action wins, from the numbers already on it.
+
+    Deliberately mechanical. Anything that reads as insight would be invented:
+    akochan reports an expected value, not a reason.
+    """
+    accepted_ids = set(accepted)
+    best = max(actions, key=lambda action: action["ev"])
+    runner_up = min(
+        (action for action in actions if action["id"] not in accepted_ids),
+        key=lambda action: best["ev"] - action["ev"],
+        default=None,
+    )
+
+    parts = [
+        "akochan puts {} ahead at {:+.2f} placement points".format(
+            best.get("label", best["id"]).replace("Discard ", "discarding "),
+            best["ev"],
+        )
+    ]
+    if runner_up is not None:
+        parts.append(
+            "{:.2f} clear of {}".format(
+                best["ev"] - runner_up["ev"],
+                runner_up.get("label", runner_up["id"]).replace("Discard ", "discarding "),
+            )
+        )
+    if best.get("shantenAfter") is not None and best.get("ukeire") is not None:
+        parts.append(
+            "leaving {} with {} tiles of acceptance".format(
+                "tenpai" if best["shantenAfter"] == 0 else "{}-shanten".format(best["shantenAfter"]),
+                best["ukeire"],
+            )
+        )
+    sentence = ", ".join(parts) + "."
+
+    if candidate.get("naiveFails"):
+        sentence += (
+            " Pure tile efficiency would play something else here, which is what makes"
+            " the position worth studying."
+        )
+    return sentence
 
 
 def write_bank(

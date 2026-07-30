@@ -24,9 +24,8 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { shanten } from '../src/lib/shanten';
-import { analyzeDiscards } from '../src/lib/ukeire';
-import { NUM_TILE_TYPES, isRedFive, tileLabel, tileToIndex, type Tile } from '../src/lib/tiles';
+import { analyzePosition } from '../src/lib/analyzePosition';
+import { tileLabel } from '../src/lib/tiles';
 import { replayKyoku, splitKyoku, type MjaiEvent, type Snapshot } from '../src/lib/replay';
 import {
   SCHEMA_VERSION,
@@ -99,54 +98,9 @@ function evaluateDecision(
   gameId: string,
   decisionIndex: number,
 ): Candidate | undefined {
-  const counts = new Array<number>(NUM_TILE_TYPES).fill(0);
-  for (const tile of position.hand) counts[tileToIndex(tile)] += 1;
-
-  const meldCount = Math.min(4, position.melds.length) as 0 | 1 | 2 | 3 | 4;
-  const current = shanten(counts, meldCount);
-  // Complete hands are not a discard problem; very distant ones have no
-  // meaningful answer on efficiency alone.
-  if (current < 0 || current > 2) return undefined;
-
-  // Only what this player can actually see: their own tiles, every river, and
-  // the dora indicators. Opponents' concealed hands are visible in the log but
-  // not to the player, so they must not inform the acceptance count.
-  const visible = new Array<number>(NUM_TILE_TYPES).fill(0);
-  for (const tile of position.hand) visible[tileToIndex(tile)] += 1;
-  for (const meld of position.melds) {
-    for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
-  }
-  for (const melds of position.opponentMelds) {
-    for (const meld of melds) for (const tile of meld.tiles) visible[tileToIndex(tile)] += 1;
-  }
-  for (const river of position.rivers) {
-    for (const tile of river) visible[tileToIndex(tile)] += 1;
-  }
-  for (const tile of position.doraIndicators) visible[tileToIndex(tile)] += 1;
-
-  const options = analyzeDiscards(counts, meldCount, visible);
-  if (options.length < 2) return undefined;
-
-  // Acceptance is computed over 34 tile indices, which collapses a red five onto
-  // its plain twin. Actions must name a tile the hand actually holds, and when
-  // both copies are present the plain one is the discard — a player keeps the
-  // red for its dora value.
-  const byIndex = new Map<number, Tile[]>();
-  for (const tile of position.hand) {
-    const index = tileToIndex(tile);
-    const list = byIndex.get(index);
-    if (list) list.push(tile);
-    else byIndex.set(index, [tile]);
-  }
-  const resolveHandTile = (tile: Tile): Tile => {
-    const held = byIndex.get(tileToIndex(tile));
-    if (!held || held.length === 0) return tile;
-    return held.find((candidate) => !isRedFive(candidate)) ?? held[0];
-  };
-
-  const bestShanten = options[0].shantenAfter;
-  const bestUkeire = options[0].ukeire;
-  const tier = options.filter((option) => option.shantenAfter === bestShanten);
+  const analysis = analyzePosition(position);
+  if (!analysis) return undefined;
+  const { options, bestShanten, bestUkeire, tier, resolveHandTile } = analysis;
   if (tier.length < MIN_TIER) return undefined;
 
   const actions = options.map((option) => {
@@ -177,7 +131,7 @@ function evaluateDecision(
 
   const tags = ['efficiency'];
   if (bestShanten === 0) tags.push('tenpai-choice');
-  if (current === 2) tags.push('two-shanten');
+  if (analysis.currentShanten === 2) tags.push('two-shanten');
   if (tier.length >= 5) tags.push('wide-choice');
   if (position.riichi.some((flag, seat) => flag && seat !== position.seat)) {
     tags.push('opponent-riichi');
@@ -189,7 +143,11 @@ function evaluateDecision(
     Math.min(
       95,
       Math.round(
-        46 - margin * 2.5 + tier.length * 4 + (current - 1) * 6 + accepted.length * 4,
+        46 -
+          margin * 2.5 +
+          tier.length * 4 +
+          (analysis.currentShanten - 1) * 6 +
+          accepted.length * 4,
       ),
     ),
   );

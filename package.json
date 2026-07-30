@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "build:replays": "vite-node scripts/build-replays.ts",
     "build:tiles": "node scripts/build-tiles.mjs",
-    "build:puzzles": "vite-node scripts/build-puzzles.ts"
+    "build:puzzles": "vite-node scripts/build-puzzles.ts",
+    "annotate:ukeire": "vite-node scripts/annotate-ukeire.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

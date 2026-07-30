@@ -1,0 +1,123 @@
+/**
+ * Annotate mined candidates with tile-efficiency data.
+ *
+ * Stage between mine.py and verify.py. Reads candidates as JSONL, adds the
+ * ukeire baseline for each position, and writes them back out.
+ *
+ * This is a TypeScript stage in an otherwise Python pipeline for one reason: the
+ * shanten and ukeire implementations live here, are covered by a brute-force
+ * reference test, and are validated against the shipped bank. Porting them to
+ * Python to keep the pipeline monolingual would mean maintaining a second
+ * implementation of the subtlest code in the project and hoping the two never
+ * drift. Shelling out to the tested one is the cheaper guarantee.
+ *
+ * It also attaches each action's display label, so tile naming stays with
+ * `tileLabel`. Generating labels on the Python side is what previously produced
+ * "discard s" — honour tiles are single letters, and a naive lowercasing
+ * destroyed them.
+ *
+ * Usage:
+ *   npm run annotate:ukeire -- --input candidates.jsonl --output annotated.jsonl
+ */
+
+import { createReadStream, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+
+import { analyzePosition } from '../src/lib/analyzePosition';
+import { tileLabel } from '../src/lib/tiles';
+import type { Position } from '../src/types/puzzle';
+
+interface Candidate {
+  position: Position;
+  [key: string]: unknown;
+}
+
+interface ActionAnnotation {
+  label: string;
+  tile: string;
+  shantenAfter: number;
+  ukeire: number;
+}
+
+function argValue(flag: string): string | undefined {
+  const index = process.argv.indexOf(flag);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+async function main(): Promise<number> {
+  const inputPath = argValue('--input');
+  const outputPath = argValue('--output');
+  if (!inputPath || !outputPath) {
+    process.stderr.write('usage: --input <candidates.jsonl> --output <annotated.jsonl>\n');
+    return 2;
+  }
+
+  const lines = createInterface({
+    input: createReadStream(inputPath, 'utf8'),
+    crlfDelay: Infinity,
+  });
+
+  const out: string[] = [];
+  let read = 0;
+  let annotated = 0;
+  let skipped = 0;
+
+  for await (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    read += 1;
+
+    const candidate = JSON.parse(trimmed) as Candidate;
+    const analysis = analyzePosition(candidate.position);
+    if (!analysis) {
+      // Complete or far-from-tenpai hands are not discard problems. Dropped
+      // here rather than carried forward with empty annotations, which would
+      // make every downstream efficiency comparison vacuously true.
+      skipped += 1;
+      continue;
+    }
+
+    const { options, bestShanten, bestUkeire, resolveHandTile } = analysis;
+
+    const perAction: Record<string, ActionAnnotation> = {};
+    for (const option of options) {
+      const tile = resolveHandTile(option.tile);
+      perAction[`discard:${tile}`] = {
+        label: `Discard ${tileLabel(tile)}`,
+        tile,
+        shantenAfter: option.shantenAfter,
+        ukeire: option.ukeire,
+      };
+    }
+
+    // What pure efficiency would play: best shanten, and nothing accepts more.
+    const ukeireBest = options
+      .filter((option) => option.shantenAfter === bestShanten && option.ukeire === bestUkeire)
+      .map((option) => `discard:${resolveHandTile(option.tile)}`);
+
+    out.push(
+      JSON.stringify({
+        ...candidate,
+        bestShanten,
+        currentShanten: analysis.currentShanten,
+        ukeireBest,
+        ukeireActions: perAction,
+      }),
+    );
+    annotated += 1;
+  }
+
+  writeFileSync(outputPath, out.length ? out.join('\n') + '\n' : '', 'utf8');
+  process.stderr.write(
+    `annotated ${annotated} of ${read} candidates (${skipped} not discard problems) -> ${outputPath}\n`,
+  );
+  return 0;
+}
+
+main().then(
+  (code) => process.exit(code),
+  (error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+    process.exit(1);
+  },
+);
