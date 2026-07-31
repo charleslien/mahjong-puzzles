@@ -1,4 +1,4 @@
-import type { PuzzleIndex } from '../types/puzzle';
+import type { BankMeta } from '../lib/puzzleSource';
 
 /**
  * The about page.
@@ -11,13 +11,13 @@ import type { PuzzleIndex } from '../types/puzzle';
  * right answer is, and where that judgement is weak. The engineering detail lives
  * in the repository, which is linked, and is not reproduced here.
  */
-export function About({ index }: { index: PuzzleIndex }) {
+export function About({ meta }: { meta: BankMeta }) {
   return (
     <section className="panel prose">
       <h2>About</h2>
 
       <p className="lede">
-        {index.count.toLocaleString()} riichi decisions taken from real games, each scored by a
+        {meta.count.toLocaleString()} riichi decisions taken from real games, each scored by a
         mahjong engine, so you can find out whether the tile you would have played is the one that
         actually wins points.
       </p>

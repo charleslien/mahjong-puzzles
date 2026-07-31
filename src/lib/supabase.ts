@@ -311,14 +311,19 @@ export interface PuzzleStats {
  * caller has to cope with having none — the offline estimate remains the
  * fallback rather than the exception.
  */
-export async function fetchPuzzleStats(): Promise<Map<string, PuzzleStats>> {
+export async function fetchPuzzleStats(ids?: string[]): Promise<Map<string, PuzzleStats>> {
   const out = new Map<string, PuzzleStats>();
   if (!isConfigured()) return out;
+  if (ids && ids.length === 0) return out;
   const db = await supabase();
-  const { data, error } = await db
+  let query = db
     .from('puzzle_difficulty')
     .select('puzzle_id,rating,rd,games,solve_rate')
     .gt('games', 0);
+  // Scoped to the session's puzzles: fetching every rating would reintroduce the
+  // whole-bank request that sampling exists to avoid.
+  if (ids) query = query.in('puzzle_id', ids.slice(0, 500));
+  const { data, error } = await query;
   if (error) throw new Error(`puzzle_difficulty: ${error.message}`);
   for (const row of (data ?? []) as Array<Record<string, unknown>>) {
     out.set(row.puzzle_id as string, {

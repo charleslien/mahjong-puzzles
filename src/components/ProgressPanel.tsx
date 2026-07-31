@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { GRADE_LABELS, type Grade } from '../lib/grade';
 import { fetchMyRating, type PlayerRating } from '../lib/supabase';
 import { summarize, type Progress } from '../lib/progress';
+import type { PuzzleSource } from '../lib/puzzleSource';
 import type { Puzzle } from '../types/puzzle';
 
 const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
@@ -28,15 +29,31 @@ function when(at: number): string {
 
 export function ProgressPanel({
   progress,
-  puzzles,
+  source,
   onClear,
 }: {
   progress: Progress;
-  puzzles: Puzzle[];
+  source: PuzzleSource;
   onClear: () => void;
 }) {
   const summary = summarize(progress);
-  const byId = new Map(puzzles.map((puzzle) => [puzzle.id, puzzle]));
+
+  // The puzzles behind your history are not necessarily the ones in the current
+  // session, so they are fetched by id. Until they arrive the list still renders
+  // — with action ids instead of labels — rather than showing nothing.
+  const [byId, setById] = useState<Map<string, Puzzle>>(new Map());
+  useEffect(() => {
+    let live = true;
+    const ids = [...new Set(progress.attempts.map((attempt) => attempt.puzzleId))].slice(-200);
+    if (!ids.length) return;
+    source
+      .byIds(ids)
+      .then((found) => {
+        if (live) setById(new Map(found.map((puzzle) => [puzzle.id, puzzle])));
+      })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [source, progress.attempts]);
 
   // Only exists for a signed-in solver on a deployment with a database, and only
   // after the rating batch has run, so its absence is the normal case.

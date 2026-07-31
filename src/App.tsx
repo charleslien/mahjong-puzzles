@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { About } from './components/About';
 import { AccountButton } from './components/AccountButton';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
 import { gradeAnswer, type GradedAnswer } from './lib/grade';
-import { filterPuzzles, loadBank, shuffled, type LoadedBank } from './lib/puzzleBank';
+import { openSource, type BankMeta, type PuzzleSource } from './lib/puzzleSource';
 import {
   clearProgress,
   loadProgress,
@@ -16,7 +16,7 @@ import {
 } from './lib/progress';
 // Aliased: `recordAttempt` above writes to localStorage, this one to the
 // database. They are not alternatives — both run for a signed-in solver.
-import { recordAttempt as recordRemoteAttempt } from './lib/supabase';
+import { recordAttempt as recordRemoteAttempt, type PuzzleStats } from './lib/supabase';
 import type { Puzzle } from './types/puzzle';
 
 type View = 'train' | 'progress' | 'about';
@@ -41,8 +41,22 @@ const DIFFICULTY_BANDS = [
   { id: 'hard', label: 'Hard', min: 66, max: 100 },
 ] as const;
 
+/**
+ * How many puzzles a session holds.
+ *
+ * Enough that nobody reaches the end of one in a sitting, small enough that the
+ * page is not paying to download a bank it will not play. Running out simply
+ * fetches more.
+ */
+const SESSION_SIZE = 40;
+
 export default function App() {
-  const [bank, setBank] = useState<LoadedBank>();
+  const [source, setSource] = useState<PuzzleSource>();
+  const [meta, setMeta] = useState<BankMeta>();
+  const [session, setSession] = useState<Puzzle[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<Map<string, PuzzleStats>>(new Map());
+  const [linked, setLinked] = useState<Puzzle>();
   const [error, setError] = useState<string>();
   const [route, setRoute] = useState<Route>(() => parseHash());
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
@@ -56,9 +70,13 @@ export default function App() {
   const [answer, setAnswer] = useState<GradedAnswer>();
 
   useEffect(() => {
-    loadBank().then(setBank, (cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    });
+    openSource().then(
+      (opened) => {
+        setSource(opened);
+        opened.meta().then(setMeta, () => undefined);
+      },
+      (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
+    );
   }, []);
 
   useEffect(() => {
@@ -67,33 +85,62 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const session = useMemo<Puzzle[]>(() => {
-    if (!bank) return [];
+  // Fetch a session whenever the band changes or a fresh shuffle is asked for.
+  // `seed` is not used to order anything any more — the sampler does that — but
+  // changing it is still how "Shuffle" asks for a new draw.
+  useEffect(() => {
+    if (!source) return;
+    let live = true;
     const selected = DIFFICULTY_BANDS.find((candidate) => candidate.id === band)!;
-    const filtered = filterPuzzles(bank.puzzles, {
-      minDifficulty: selected.min,
-      maxDifficulty: selected.max,
-    });
 
-    // Unseen puzzles first, then everything else. Without this a random order
-    // still keeps serving positions already answered, which with 897 puzzles and
-    // a growing history is most of what you would see. Answered ones stay in the
-    // queue rather than being dropped, so the session never runs dry.
-    const seen = attemptedIds(progress);
-    const order = shuffled(filtered, seed);
-    const fresh = order.filter((puzzle) => !seen.has(puzzle.id));
-    const repeats = order.filter((puzzle) => seen.has(puzzle.id));
-    return [...fresh, ...repeats];
-    // `progress` is deliberately not a dependency: re-sorting the moment an
-    // answer lands would move the puzzle you are still looking at.
+    void (async () => {
+      try {
+        const [puzzles, count] = await Promise.all([
+          source.session({
+            size: SESSION_SIZE,
+            minDifficulty: selected.min,
+            maxDifficulty: selected.max,
+            // Answered puzzles go to the back rather than being dropped, so a
+            // session never runs out.
+            excludeIds: [...attemptedIds(progress)],
+          }),
+          source.count(selected.min, selected.max),
+        ]);
+        if (!live) return;
+        setSession(puzzles);
+        setTotal(count);
+        setCursor(0);
+        setAnswer(undefined);
+        // Community difficulty is a bonus; never let it fail the session.
+        source
+          .stats(puzzles.map((puzzle) => puzzle.id))
+          .then((found) => { if (live) setStats(found); })
+          .catch(() => undefined);
+      } catch (cause) {
+        if (live) setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
+
+    return () => { live = false; };
+    // `progress` is read but deliberately not a dependency: refetching the moment
+    // an answer lands would replace the puzzle still on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bank, band, seed]);
+  }, [source, band, seed]);
 
-  // A permalinked puzzle takes precedence over wherever the session sits.
-  const linked = useMemo(() => {
-    if (!bank || !route.puzzleId) return undefined;
-    return bank.puzzles.find((puzzle) => puzzle.id === route.puzzleId);
-  }, [bank, route.puzzleId]);
+  // A permalinked puzzle takes precedence over wherever the session sits, and
+  // may not be in the sampled page at all, so it is fetched by id.
+  useEffect(() => {
+    if (!source || !route.puzzleId) {
+      setLinked(undefined);
+      return;
+    }
+    let live = true;
+    source.byId(route.puzzleId).then(
+      (found) => { if (live) setLinked(found); },
+      () => { if (live) setLinked(undefined); },
+    );
+    return () => { live = false; };
+  }, [source, route.puzzleId]);
 
   const current = linked ?? session[cursor];
 
@@ -140,7 +187,16 @@ export default function App() {
       window.location.hash = '#/train';
       return;
     }
-    setCursor((previous) => (previous + 1) % Math.max(1, session.length));
+    setCursor((previous) => {
+      const next = previous + 1;
+      if (next >= session.length) {
+        // The page is spent. Ask for another rather than wrapping back to the
+        // top, which would replay the same forty puzzles forever.
+        setSeed((value) => value + 1);
+        return 0;
+      }
+      return next;
+    });
   }, [linked, session.length]);
 
   const startFreshSession = useCallback(() => {
@@ -194,9 +250,9 @@ export default function App() {
           </section>
         )}
 
-        {!error && !bank && <section className="panel">Loading puzzles…</section>}
+        {!error && !source && <section className="panel">Loading puzzles…</section>}
 
-        {bank && route.view === 'train' && (
+        {source && route.view === 'train' && (
           <>
             <div className="sessionbar">
               <div className="sessionbar__group" role="group" aria-label="Difficulty">
@@ -249,8 +305,8 @@ export default function App() {
                 onAnswer={onAnswer}
                 onNext={onNext}
                 index={linked ? 0 : cursor}
-                total={linked ? 1 : session.length}
-                stats={bank.stats.get(current.id)}
+                total={linked ? 1 : total}
+                stats={stats.get(current.id)}
               />
             ) : (
               <section className="panel">
@@ -261,15 +317,15 @@ export default function App() {
           </>
         )}
 
-        {bank && route.view === 'progress' && (
+        {source && route.view === 'progress' && (
           <ProgressPanel
             progress={progress}
-            puzzles={bank.puzzles}
+            source={source}
             onClear={() => setProgress(clearProgress())}
           />
         )}
 
-        {bank && route.view === 'about' && <About index={bank.index} />}
+        {meta && route.view === 'about' && <About meta={meta} />}
       </main>
 
       <footer className="footer">
