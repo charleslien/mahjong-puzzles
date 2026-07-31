@@ -618,6 +618,20 @@ kbd {
   justify-content: center;
 }
 
+/* Melds sit at the outer corner of their owner's row rather than centred under
+   it. On a table a player's called sets are stacked to one side, and floating
+   them in the middle of the row made them read as part of the hand. Each seat
+   pushes toward the corner nearest it. */
+.board__melds--bottom,
+.board__melds--right {
+  justify-content: flex-end;
+}
+
+.board__melds--top,
+.board__melds--left {
+  justify-content: flex-start;
+}
+
 .board__melds {
   gap: 0.3rem;
   /* One row of meld tiles, always reserved. A seat gains melds partway through a

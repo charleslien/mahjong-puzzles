@@ -31,7 +31,16 @@ interface Acceptance {
 function useAcceptance(puzzle: Puzzle): Map<string, Acceptance> {
   return useMemo(() => {
     const out = new Map<string, Acceptance>();
-    if (puzzle.kind !== 'discard') return out;
+    // A riichi puzzle is the same fourteen-tile decision as a discard — each
+    // option names the tile that line throws — so acceptance is computable and
+    // was simply not being computed, leaving those rows with a "draws" figure
+    // and nothing behind it.
+    //
+    // A call puzzle genuinely cannot: it is judged at an opponent's discard with
+    // thirteen tiles in hand and no discard made yet, and its options name the
+    // tile you would throw *after* calling, from a hand that does not exist yet.
+    // Those rows carry no acceptance figure either, so there is nothing to hover.
+    if (puzzle.kind !== 'discard' && puzzle.kind !== 'riichi') return out;
 
     const analysis = analyzePosition(puzzle.position);
     if (!analysis) return out;
