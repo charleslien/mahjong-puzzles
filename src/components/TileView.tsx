@@ -33,6 +33,8 @@ export interface TileViewProps {
   drawn?: boolean;
   /** Already claimed out of a river — drawn as an empty slot. */
   spent?: boolean;
+  /** Ringed, for the tile a call puzzle is being asked about. */
+  offered?: boolean;
   /** Extra text announced to screen readers. */
   describedAs?: string;
 }
@@ -47,6 +49,7 @@ export function TileView({
   accent,
   drawn = false,
   spent = false,
+  offered = false,
   describedAs,
 }: TileViewProps) {
   const canonical = tile ? canonicalize(tile) : undefined;
@@ -67,6 +70,7 @@ export function TileView({
     selected ? 'tile--selected' : '',
     drawn ? 'tile--drawn' : '',
     spent ? 'tile--spent' : '',
+    offered ? 'tile--offered' : '',
     canonical && isRedFive(canonical) ? 'tile--red' : '',
     accent ? `tile--accent-${accent}` : '',
     onSelect ? 'tile--interactive' : '',

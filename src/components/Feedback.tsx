@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 
 import { analyzePosition, visibleCounts } from '../lib/analyzePosition';
+import { BRANCH_LABELS, consumedKey, isMultiStep } from '../lib/decision';
 import { GRADE_LABELS, formatLoss, gradeForLoss, type GradedAnswer } from '../lib/grade';
 import type { PuzzleStats } from '../lib/supabase';
 import { tileToIndex, type Tile } from '../lib/tiles';
-import type { Puzzle } from '../types/puzzle';
+import type { ActionBranch, Puzzle } from '../types/puzzle';
 import { ActionLabel, stripTileName } from './ActionLabel';
+import { Provenance } from './Provenance';
 import { TileView } from './TileView';
 
 /**
@@ -62,6 +64,61 @@ function shantenLabel(shanten: number | undefined): string {
   if (shanten === undefined) return '';
   if (shanten < 0) return 'won';
   return shanten === 0 ? 'tenpai' : `${shanten}-shanten`;
+}
+
+/**
+ * Rows for one fork of a multi-step decision.
+ *
+ * Grouped rather than listed flat because the grouping is the lesson: a riichi
+ * position may offer five ways to declare and twelve ways to play on, and the
+ * shape of that — which branch, and how much room it leaves — is what the solver
+ * is trying to learn. Seventeen rows sorted by value would bury it.
+ *
+ * Long branches are cut to the best few, plus whichever line the solver actually
+ * played. The tail of a twelve-tile branch is a list of throws nobody was
+ * considering.
+ */
+const ROWS_PER_BRANCH = 5;
+
+interface Group {
+  key: string;
+  branch: ActionBranch;
+  /** The set this group's call eats, when the branch offers more than one. */
+  consumed?: Tile[];
+  lines: Puzzle['actions'];
+  hidden: number;
+}
+
+function branchGroups(actions: Puzzle['actions'], chosenId: string): Group[] {
+  // Keyed by fork *and* consumed set: chi-ing with 2+3 and with 3+5 lead to
+  // different hands, so their discards are not comparable and do not belong
+  // under one heading.
+  const buckets = new Map<string, Group>();
+  for (const action of actions) {
+    if (!action.branch) continue;
+    const key = `${action.branch}|${consumedKey(action.consumed)}`;
+    const bucket = buckets.get(key) ?? {
+      key,
+      branch: action.branch,
+      consumed: action.consumed,
+      lines: [],
+      hidden: 0,
+    };
+    bucket.lines.push(action);
+    buckets.set(key, bucket);
+  }
+
+  return [...buckets.values()]
+    .map((group) => {
+      const ranked = [...group.lines].sort((a, b) => a.loss - b.loss);
+      const lines = ranked.slice(0, ROWS_PER_BRANCH);
+      const chosen = ranked.find((action) => action.id === chosenId);
+      if (chosen && !lines.includes(chosen)) lines.push(chosen);
+      return { ...group, lines, hidden: ranked.length - lines.length };
+    })
+    // Best group first, by its best line. Ordering by value is safe here because
+    // the puzzle has already been answered.
+    .sort((a, b) => a.lines[0].loss - b.lines[0].loss);
 }
 
 function OptionRow({
@@ -156,14 +213,29 @@ export function Feedback({
   // Best first. `loss` is the gap to the best action, so ascending loss is
   // descending value.
   const ranked = [...puzzle.actions].sort((a, b) => a.loss - b.loss);
+  const grouped = isMultiStep(puzzle.actions);
+  const groups = grouped ? branchGroups(puzzle.actions, answer.action.id) : [];
+  const shown = grouped ? groups.flatMap((group) => group.lines) : ranked;
   const acceptance = useAcceptance(puzzle);
   // On a discard puzzle every row reduces to the same word, and the tile beside
   // it already says which play it is. Nothing is gained by printing "Discard"
-  // twelve times, so the column collapses when it carries no information.
+  // twelve times, so the column collapses when it carries no information. Under
+  // branch headers it is redundant for the same reason.
   const labels = new Set(ranked.map((action) => stripTileName(action.label)));
-  const showLabels = labels.size > 1;
-  const showShanten = ranked.some((action) => action.shantenAfter !== undefined);
-  const showUkeire = ranked.some((action) => typeof action.ukeire === 'number');
+  const showLabels = !grouped && labels.size > 1;
+  const showShanten = shown.some((action) => action.shantenAfter !== undefined);
+  const showUkeire = shown.some((action) => typeof action.ukeire === 'number');
+
+  const rowFor = (action: Puzzle['actions'][number]) => (
+    <OptionRow
+      key={action.id}
+      puzzle={puzzle}
+      action={action}
+      chosen={action.id === answer.action.id}
+      showLabels={showLabels}
+      acceptance={action.tile ? acceptance.get(String(tileToIndex(action.tile))) : undefined}
+    />
+  );
 
   return (
     <section className={`feedback feedback--${answer.grade}`} aria-live="polite">
@@ -209,19 +281,35 @@ export function Feedback({
             <span className="opt__shanten">{showShanten ? 'after' : ''}</span>
             <span className="opt__ukeire">{showUkeire ? 'draws' : ''}</span>
           </li>
-          {ranked.map((action) => (
-            <OptionRow
-              key={action.id}
-              puzzle={puzzle}
-              action={action}
-              chosen={action.id === answer.action.id}
-              showLabels={showLabels}
-              acceptance={
-                action.tile ? acceptance.get(String(tileToIndex(action.tile))) : undefined
-              }
-            />
-          ))}
+          {grouped
+            ? groups.map((group) => (
+                <li className="optgroup" key={group.key}>
+                  <p className="optgroup__head">
+                    <span className="optgroup__name">{BRANCH_LABELS[group.branch]}</span>
+                    {/* Not xs: two chi groups differ only by these tiles, and at
+                        the smaller size 2+3 bamboo and 3+5 bamboo were not
+                        tellable apart — which is the one thing the heading is
+                        there to say. */}
+                    {group.consumed?.map((tile, index) => (
+                      <TileView key={`${tile}-${index}`} tile={tile} size="sm" />
+                    ))}
+                    <span className="optgroup__count">
+                      {group.lines.length + group.hidden}{' '}
+                      {group.lines.length + group.hidden === 1 ? 'line' : 'lines'}
+                    </span>
+                  </p>
+                  <ul className="optgroup__lines">
+                    {group.lines.map(rowFor)}
+                    {group.hidden > 0 && (
+                      <li className="optgroup__more">{group.hidden} weaker, not shown</li>
+                    )}
+                  </ul>
+                </li>
+              ))
+            : ranked.map(rowFor)}
         </ul>
+
+        <Provenance puzzle={puzzle} />
       </div>
     </section>
   );

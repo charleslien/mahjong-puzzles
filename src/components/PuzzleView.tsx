@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import {
+  branchesOf,
+  consumedKey,
+  consumedSets,
+  isMultiStep,
+  legalTiles,
+  linesIn,
+} from '../lib/decision';
+import { difficultyWord } from '../lib/difficulty';
 import type { GradedAnswer } from '../lib/grade';
 import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay';
 import type { Tile } from '../lib/tiles';
 import type { PuzzleStats } from '../lib/supabase';
-import type { Puzzle } from '../types/puzzle';
-import { ActionLabel } from './ActionLabel';
+import type { ActionBranch, MeldKind, Puzzle } from '../types/puzzle';
+import { DecisionSteps } from './DecisionSteps';
 import { Feedback } from './Feedback';
 import { GameBoard } from './GameBoard';
 
@@ -20,12 +29,11 @@ const PROMPTS: Record<Puzzle['kind'], string> = {
   placement: 'What does the placement situation demand?',
 };
 
-/** The difficulty bands the session filter offers, so the two agree. */
-function difficultyWord(difficulty: number): string {
-  if (difficulty <= 40) return 'Easy';
-  if (difficulty <= 65) return 'Medium';
-  return 'Hard';
-}
+const MELD_KIND: Partial<Record<ActionBranch, MeldKind>> = {
+  chi: 'chi',
+  pon: 'pon',
+  daiminkan: 'daiminkan',
+};
 
 /**
  * Frames for the hand this puzzle came from, ending at the decision.
@@ -70,19 +78,69 @@ export function PuzzleView({
   const [cursor, setCursor] = useState(decisionFrame);
   const [revealAll, setRevealAll] = useState(false);
 
-  // A new puzzle starts at its decision, with opponents concealed again.
+  /**
+   * How far into a multi-step decision the solver has got.
+   *
+   * A riichi or call puzzle is answered as a sequence — declare or not, then
+   * which set if a call has several, then which tile — and this is the part of
+   * that sequence already committed to. `undefined` means the first question is
+   * still open. Discard puzzles never leave that state.
+   */
+  const [taken, setTaken] = useState<{ branch: ActionBranch; consumed?: Tile[] } | undefined>();
+
+  // A new puzzle starts at its decision, with opponents concealed and no branch
+  // carried over from the last one.
   useEffect(() => {
     setCursor(frames.length - 1);
     setRevealAll(false);
+    setTaken(undefined);
   }, [frames]);
 
   const answered = answer !== undefined;
   const atDecision = cursor === decisionFrame;
   const hasHistory = frames.length > 1;
 
+  const multiStep = isMultiStep(puzzle.actions);
+  const branches = useMemo(() => branchesOf(puzzle.actions), [puzzle]);
+  // Only asked when the call could eat more than one set — chi-ing with 2+3 or
+  // with 3+5 are different hands afterwards, but there is nothing to ask when
+  // there is one way to do it.
+  const sets = useMemo(
+    () => (taken && !taken.consumed ? consumedSets(puzzle.actions, taken.branch) : []),
+    [puzzle, taken],
+  );
+
+  /** The lines still reachable from where the solver has got to. */
+  const openLines = useMemo(
+    () => (taken ? linesIn(puzzle.actions, taken.branch, taken.consumed) : []),
+    [puzzle, taken],
+  );
+
+  const pickingTile = multiStep && taken !== undefined && sets.length <= 1;
+  // Only while the question is open. Once answered the feedback table explains
+  // the position, and leaving eleven of fourteen tiles dimmed underneath it —
+  // some of them also carrying verdict stripes — says two things at once.
+  const legal = useMemo(
+    () =>
+      !answered && taken && pickingTile
+        ? legalTiles(puzzle.actions, taken.branch, taken.consumed)
+        : undefined,
+    [puzzle, taken, pickingTile, answered],
+  );
+
   const accentFor = (tile: Tile): 'best' | 'good' | 'bad' | undefined => {
     if (!answered || !atDecision) return undefined;
-    const action = puzzle.actions.find((candidate) => candidate.tile === tile);
+    // A tile is coloured by the line the solver actually took it down, not by
+    // whichever line happens to mention the tile first. With two ways to chi the
+    // same tile, the same discard sits on two lines with different values, so
+    // the consumed set has to match as well as the branch.
+    const played = answer.action;
+    const action = puzzle.actions.find(
+      (candidate) =>
+        candidate.tile === tile &&
+        candidate.branch === played.branch &&
+        consumedKey(candidate.consumed) === consumedKey(played.consumed),
+    );
     if (!action) return undefined;
     if (action.id === answer.best.id) return 'best';
     if (action.accepted) return 'good';
@@ -91,10 +149,49 @@ export function PuzzleView({
   };
 
   const onTile = (tile: Tile): void => {
-    if (answered || !atDecision || puzzle.kind !== 'discard') return;
+    if (answered || !atDecision) return;
+    if (multiStep) {
+      if (!pickingTile || !taken) return;
+      const line = openLines.find((candidate) => candidate.tile === tile);
+      if (line) onAnswer(line.id);
+      return;
+    }
     const action = puzzle.actions.find((candidate) => candidate.tile === tile);
     if (action) onAnswer(action.id);
   };
+
+  /**
+   * Commit to a fork, and skip any question it leaves with only one answer.
+   *
+   * Letting a discard pass has no follow-up, and a hand with exactly one tenpai
+   * tile offers exactly one way to declare. Asking anyway would be a button with
+   * a single option on it.
+   */
+  const chooseBranch = useCallback(
+    (branch: ActionBranch) => {
+      const lines = linesIn(puzzle.actions, branch);
+      if (lines.length === 1) {
+        onAnswer(lines[0].id);
+        return;
+      }
+      const options = consumedSets(puzzle.actions, branch);
+      setTaken({ branch, consumed: options.length === 1 ? options[0] : undefined });
+    },
+    [puzzle, onAnswer],
+  );
+
+  const chooseSet = useCallback(
+    (consumed: Tile[]) => {
+      if (!taken) return;
+      const lines = linesIn(puzzle.actions, taken.branch, consumed);
+      if (lines.length === 1) {
+        onAnswer(lines[0].id);
+        return;
+      }
+      setTaken({ ...taken, consumed });
+    },
+    [puzzle, taken, onAnswer],
+  );
 
   const frame = frames[Math.min(cursor, frames.length - 1)];
 
@@ -107,20 +204,35 @@ export function PuzzleView({
   const toDecision = useCallback(() => setCursor(decisionFrame), [decisionFrame]);
 
   /**
-   * Answer a non-discard puzzle by number.
+   * Take the numbered choice on whichever step is showing.
    *
-   * Discards are answered by clicking a tile, but riichi and call puzzles are
-   * buttons and were mouse-only — the one part of the interface a keyboard could
+   * Tiles are picked by clicking, but the fork and the set are buttons, and
+   * those used to be mouse-only — the one part of the interface a keyboard could
    * not reach.
    */
   const chooseByNumber = useCallback(
     (index: number) => {
-      if (answered || !atDecision || puzzle.kind === 'discard') return;
-      const action = puzzle.actions[index];
-      if (action) onAnswer(action.id);
+      if (answered || !atDecision || !multiStep) return;
+      if (!taken) {
+        const branch = branches[index];
+        if (branch) chooseBranch(branch);
+        return;
+      }
+      const set = sets[index];
+      if (set) chooseSet(set);
     },
-    [answered, atDecision, puzzle, onAnswer],
+    [answered, atDecision, multiStep, taken, branches, sets, chooseBranch, chooseSet],
   );
+
+  /** Undo the last committed step. False when there was nothing to undo. */
+  const stepBackChoice = useCallback((): boolean => {
+    if (!taken) return false;
+    // A set chosen for a call is undone before the call itself, so Back walks
+    // out the way the solver walked in.
+    const several = consumedSets(puzzle.actions, taken.branch).length > 1;
+    setTaken(taken.consumed && several ? { branch: taken.branch } : undefined);
+    return true;
+  }, [puzzle, taken]);
 
   // Held in a ref so the listener can stay mounted once rather than rebinding on
   // every cursor change.
@@ -132,6 +244,7 @@ export function PuzzleView({
     onNext,
     answered,
     chooseByNumber,
+    stepBackChoice,
   });
   handlers.current = {
     stepBack,
@@ -141,6 +254,7 @@ export function PuzzleView({
     onNext,
     answered,
     chooseByNumber,
+    stepBackChoice,
   };
 
   useEffect(() => {
@@ -171,9 +285,16 @@ export function PuzzleView({
           current.toStart();
           break;
         case 'End':
-        case 'Escape':
           event.preventDefault();
           current.toDecision();
+          break;
+        case 'Escape':
+        case 'Backspace':
+          // Undoes a committed step while a decision is part-answered, which is
+          // the nearer thing to go back from; only once nothing is committed
+          // does it mean "back to the decision".
+          event.preventDefault();
+          if (!current.stepBackChoice()) current.toDecision();
           break;
         case 'Enter':
         case ' ':
@@ -197,28 +318,61 @@ export function PuzzleView({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Riichi and call puzzles are answered by button. Those buttons belong on the
-  // table next to the hand they concern, not in a panel underneath it.
-  const choices =
-    !answered && puzzle.kind !== 'discard' ? (
-      <div className="choices">
-        <p className="choices__prompt">{PROMPTS[puzzle.kind]}</p>
-        <div className="choices__actions">
-          {puzzle.actions.map((action, index) => (
-            <button
-              key={action.id}
-              type="button"
-              className="button button--choice"
-              onClick={() => onAnswer(action.id)}
-              disabled={!atDecision}
-            >
-              <kbd className="choice__key">{index + 1}</kbd>
-              <ActionLabel action={action} />
-            </button>
-          ))}
-        </div>
-      </div>
-    ) : undefined;
+  // The steps belong on the table next to the hand they concern, not in a panel
+  // underneath it.
+  let choices: ReactNode;
+  if (!answered && multiStep) {
+    if (!taken) {
+      choices = (
+        <DecisionSteps
+          prompt={PROMPTS[puzzle.kind]}
+          branches={branches}
+          onBranch={chooseBranch}
+          disabled={!atDecision}
+        />
+      );
+    } else if (sets.length > 1) {
+      choices = (
+        <DecisionSteps
+          prompt="Which tiles do you call with?"
+          sets={sets}
+          onSet={chooseSet}
+          onBack={stepBackChoice}
+          disabled={!atDecision}
+        />
+      );
+    } else {
+      choices = (
+        <DecisionSteps
+          prompt={
+            atDecision
+              ? 'And which tile do you discard?'
+              : 'Return to the decision to answer.'
+          }
+          onBack={stepBackChoice}
+          disabled={!atDecision}
+        />
+      );
+    }
+  }
+
+  // The call in progress while the question is open, and the call that was
+  // actually played once it is answered — so the feedback shows the meld the
+  // solver made rather than leaving them to picture it.
+  const calling = answered ? answer.action : taken;
+  const pendingMeld =
+    calling?.branch &&
+    calling.consumed?.length &&
+    MELD_KIND[calling.branch] &&
+    puzzle.position.calledTile
+      ? {
+          kind: MELD_KIND[calling.branch] as MeldKind,
+          called: puzzle.position.calledTile,
+          consumed: calling.consumed,
+          from: puzzle.position.calledFrom,
+          settled: answered,
+        }
+      : undefined;
 
   return (
     <article className="puzzle">
@@ -262,9 +416,12 @@ export function PuzzleView({
         // Opponents stay concealed until the puzzle is answered; revealing them
         // beforehand would hand over the information the puzzle is about.
         revealAll={answered && revealAll}
-        interactive={!answered && atDecision && puzzle.kind === 'discard'}
+        interactive={!answered && atDecision && (!multiStep || pickingTile)}
         onSelect={onTile}
         accentFor={accentFor}
+        selectable={legal ? (tile) => legal.has(tile) : undefined}
+        pendingMeld={pendingMeld}
+        offerFrom={atDecision ? puzzle.position.calledFrom : undefined}
         overlay={choices}
       />
 
@@ -352,7 +509,7 @@ export function PuzzleView({
       {/* Only while the question is still open. Once answered, the feedback panel
           says everything this did, and leaving it up just pushed the answer
           further down the page. */}
-      {!answered && puzzle.kind === 'discard' && (
+      {!answered && !multiStep && (
         <section className="ask">
           <h2 className="ask__prompt">{PROMPTS[puzzle.kind]}</h2>
           <p className="ask__hint">

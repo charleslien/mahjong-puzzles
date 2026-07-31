@@ -216,8 +216,10 @@ class AkochanEngine:
         """Evaluate the final decision in `history` for `seat`.
 
         `history` must be a real prefix of an mjai log ending at the event that
-        creates the decision. Returns [{"id", "tile", "ev", "moves"}] best-first,
-        with `ev` in placement points on the JUN_PT scale.
+        creates the decision. Returns one entry per *line* akochan considered,
+        best-first: {"id", "kind", "tile", "consumed", "ev", "moves"}, with `ev`
+        in placement points on the JUN_PT scale. `tile` is the discard the line
+        ends on, so a call and a declaration both carry one.
         """
         prefix = self._check(history, seat)
 
@@ -406,30 +408,47 @@ class AkochanEngine:
                 continue
             first = moves[0] if moves else {}
             ev = float(review["pt_exp_total"])
-            kind = first.get("type")
+            kind = first.get("type") or "unknown"
+
+            # akochan prices whole *lines*, not verbs. A declaration is `reach`
+            # then the discard it is declared on; a call is the call then the
+            # discard that follows it. The trailing discard is as much part of
+            # the play as the call — "pon, then throw the safe tile" and "pon,
+            # then push" are different decisions with different values — so it
+            # belongs in the action's identity rather than being collapsed away.
+            dahai = next(
+                (move.get("pai") for move in moves if move.get("type") == "dahai"), None
+            )
+            # And so does the set the call eats: chi-ing 4s with 2s+3s is a
+            # different hand afterwards than chi-ing it with 3s+5s, and using the
+            # red five rather than the plain one gives away a dora.
+            consumed = list(first.get("consumed") or []) or None
 
             if kind == "dahai":
-                tile = first.get("pai")
-                actions.append(
-                    {"id": "discard:{}".format(tile), "tile": tile, "ev": ev, "moves": moves}
-                )
+                action_id = "discard:{}".format(dahai)
             elif kind == "reach":
-                # A declaration is always a pair: `reach` then the discard it is
-                # declared on. The tile matters — a riichi puzzle compares
-                # declaring against playing on, and the two lines may not even
-                # want the same tile.
-                declared_on = next(
-                    (move.get("pai") for move in moves if move.get("type") == "dahai"),
-                    None,
-                )
-                actions.append(
-                    {"id": "riichi", "tile": declared_on, "ev": ev, "moves": moves, "kind": "reach"}
-                )
+                action_id = "riichi:{}".format(dahai)
+            elif kind == "none":
+                action_id = "pass"
+            elif consumed:
+                parts = [kind, "+".join(consumed)]
+                if dahai:
+                    parts.append(dahai)
+                action_id = ":".join(parts)
             else:
-                # Calls and wins also appear, carrying an EV but no discard.
-                actions.append(
-                    {"id": kind or "unknown", "tile": None, "ev": ev, "moves": moves, "kind": kind}
-                )
+                # Wins and anything else that carries an EV but no structure.
+                action_id = kind
+
+            actions.append(
+                {
+                    "id": action_id,
+                    "kind": kind,
+                    "tile": dahai,
+                    "consumed": consumed,
+                    "ev": ev,
+                    "moves": moves,
+                }
+            )
 
         actions.sort(key=lambda action: -action["ev"])
         return actions

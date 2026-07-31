@@ -16,6 +16,8 @@ import unittest
 
 from pipeline.verify import (
     _kyoku_history,
+    branch_rankings,
+    build_call_actions,
     build_riichi_actions,
     load_history,
     tags_for,
@@ -94,38 +96,136 @@ class RiichiActionsTest(unittest.TestCase):
         }
 
     def test_returns_none_without_a_declaration_option(self):
-        ranked = [{"id": "discard:8m", "tile": "8m", "ev": 1.0, "moves": [], "kind": None}]
+        ranked = [{"id": "discard:8m", "tile": "8m", "ev": 1.0, "moves": [], "kind": "dahai"}]
         self.assertIsNone(build_riichi_actions(ranked, self.candidate))
 
-    def test_pairs_the_best_line_of_each_sort(self):
+    def test_publishes_every_line_of_both_branches(self):
         ranked = [
-            {"id": "riichi", "tile": "8m", "ev": 17.6, "moves": [], "kind": "reach"},
-            {"id": "discard:2p", "tile": "2p", "ev": 14.8, "moves": [], "kind": None},
-            {"id": "discard:8m", "tile": "8m", "ev": 12.0, "moves": [], "kind": None},
+            {"id": "riichi:8m", "tile": "8m", "ev": 17.6, "moves": [], "kind": "reach"},
+            {"id": "discard:2p", "tile": "2p", "ev": 14.8, "moves": [], "kind": "dahai"},
+            {"id": "discard:8m", "tile": "8m", "ev": 12.0, "moves": [], "kind": "dahai"},
         ]
         actions = build_riichi_actions(ranked, self.candidate)
-        self.assertIsNotNone(actions)
         assert actions is not None
-        self.assertEqual([a["id"] for a in actions], ["riichi", "damaten"])
-        # The concealed line keeps its own best tile rather than being forced onto
-        # the tile the declaration wants.
-        self.assertEqual(actions[1]["tile"], "2p")
+        self.assertEqual(
+            [(a["id"], a["branch"]) for a in actions],
+            [("riichi:8m", "riichi"), ("discard:2p", "dama"), ("discard:8m", "dama")],
+        )
+        # The tile choice survives the declaration rather than being subsumed by
+        # it: declaring on the 8 and playing on with the 8 are separate lines and
+        # akochan prices them 5.6 apart.
         self.assertEqual(actions[0]["label"], "Declare riichi, discarding 8 characters")
-        self.assertEqual(actions[1]["label"], "Stay concealed, discarding 2 circles")
+        self.assertEqual(actions[2]["label"], "Discard 8 characters")
+        self.assertEqual(actions[0]["shantenAfter"], 0)
+
+
+class CallActionsTest(unittest.TestCase):
+    """A chi's identity is the set it eats and the tile it throws afterwards.
+
+    Collapsing to one option per call kind — which is what this used to do — threw
+    away both, and with them the only parts of a call decision that are hard.
+    """
+
+    def setUp(self):
+        self.ranked = [
+            {"id": "pass", "kind": "none", "tile": None, "consumed": None, "ev": 5.8, "moves": []},
+            {
+                "id": "chi:2s+3s:5m",
+                "kind": "chi",
+                "tile": "5m",
+                "consumed": ["2s", "3s"],
+                "ev": 3.4,
+                "moves": [],
+            },
+            {
+                "id": "chi:2s+3s:9s",
+                "kind": "chi",
+                "tile": "9s",
+                "consumed": ["2s", "3s"],
+                "ev": 2.4,
+                "moves": [],
+            },
+        ]
+        self.candidate = {"tileLabels": {"2s": "2 bamboo", "3s": "3 bamboo", "5m": "5 characters"}}
+
+    def test_every_line_survives_with_its_consumed_set(self):
+        actions = build_call_actions(self.ranked, self.candidate)
+        assert actions is not None
+        self.assertEqual([a["id"] for a in actions], ["pass", "chi:2s+3s:5m", "chi:2s+3s:9s"])
+        self.assertEqual(actions[1]["consumed"], ["2s", "3s"])
+        self.assertEqual(actions[1]["branch"], "chi")
+        self.assertEqual(
+            actions[1]["label"], "Call chi with 2 bamboo and 3 bamboo, then discard 5 characters"
+        )
+
+    def test_returns_none_when_nothing_can_be_called(self):
+        self.assertIsNone(build_call_actions(self.ranked[:1], self.candidate))
+
+
+class BranchRankingsTest(unittest.TestCase):
+    """The human evaluator only ever expressed a branch, so only branches are
+    compared. Asking them to have ranked five riichi discards they never saw
+    would drop good positions over a disagreement neither party had."""
+
+    def test_agreement_is_judged_on_the_fork_not_the_tile(self):
+        actions = [
+            {"branch": "riichi", "ev": 10.0},
+            {"branch": "riichi", "ev": 9.0},
+            {"branch": "dama", "ev": 4.0},
+        ]
+        rankings = branch_rankings(actions, "riichi", ("riichi", "dama"))
+        self.assertEqual(rankings, [["riichi", "dama"], ["riichi", "dama"]])
+
+    def test_a_branch_is_worth_its_best_line(self):
+        actions = [
+            {"branch": "riichi", "ev": 1.0},
+            {"branch": "dama", "ev": 0.5},
+            {"branch": "dama", "ev": 9.0},
+        ]
+        self.assertEqual(branch_rankings(actions, "dama", ("riichi", "dama"))[0][0], "dama")
 
 
 class TagsTest(unittest.TestCase):
-    def test_riichi_puzzles_are_tagged_by_what_the_player_did(self):
-        candidate = {
-            "kind": "riichi",
-            "declaredRiichi": True,
-            "position": {"seat": 0, "riichi": [False] * 4, "melds": [], "round": {}, "tilesLeft": 40},
-            "bestShanten": 0,
-        }
-        tags = tags_for(candidate, [], 1.0)
-        self.assertIn("riichi", tags)
-        self.assertIn("declared", tags)
-        self.assertNotIn("tenpai-choice", tags)
+    def test_tags_never_reveal_what_the_player_chose(self):
+        # `declared` / `stayed-concealed` were shown as chips above the board
+        # before the puzzle was answered, and since a position is only published
+        # when akochan and the houou player agree on the branch, the chip was the
+        # answer: it predicted it in 169 of 169 riichi puzzles in the shipped bank.
+        for declared in (True, False):
+            candidate = {
+                "kind": "riichi",
+                "declaredRiichi": declared,
+                "position": {
+                    "seat": 0,
+                    "riichi": [False] * 4,
+                    "melds": [],
+                    "round": {},
+                    "tilesLeft": 40,
+                },
+                "bestShanten": 0,
+            }
+            tags = tags_for(candidate, [], 1.0)
+            self.assertIn("riichi", tags)
+            self.assertNotIn("declared", tags)
+            self.assertNotIn("stayed-concealed", tags)
+            self.assertNotIn("tenpai-choice", tags)
+
+    def test_call_tags_never_reveal_it_either(self):
+        for taken in ("pass", "chi"):
+            candidate = {
+                "kind": "call",
+                "actionTaken": taken,
+                "position": {
+                    "seat": 0,
+                    "riichi": [False] * 4,
+                    "melds": [],
+                    "round": {},
+                    "tilesLeft": 40,
+                },
+            }
+            tags = tags_for(candidate, [], 1.0)
+            self.assertNotIn("called", tags)
+            self.assertNotIn("let-it-pass", tags)
 
     def test_discard_puzzles_keep_their_kind(self):
         candidate = {

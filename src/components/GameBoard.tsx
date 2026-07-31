@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { doraFromIndicator, sortTiles, type Tile } from '../lib/tiles';
 import { seatLayout, type Snapshot, type SeatState } from '../lib/replay';
-import type { Seat } from '../types/puzzle';
+import type { MeldKind, Seat } from '../types/puzzle';
 import { TileView, type Rotation, type TileSize } from './TileView';
 
 const SEAT_WINDS = ['E', 'S', 'W', 'N'] as const;
@@ -10,38 +10,81 @@ const SEAT_WINDS = ['E', 'S', 'W', 'N'] as const;
 type Position = 'bottom' | 'right' | 'top' | 'left';
 
 /**
- * Every seat's tiles are drawn upright, in horizontal rows.
+ * Every seat's tiles face the player they belong to.
  *
- * A real table turns each player's tiles to face them, and this used to. It
- * reads worse: rotated faces are harder to identify at a glance, and a river
- * that grows away from its owner scrambles the discard order for three of the
- * four seats. Legibility wins for a study tool.
+ * A tile lying on the table reads with its top edge away from its owner, so the
+ * seat across the table is upside down and the two side seats are on their
+ * sides. That is what the board now draws.
  *
- * The one rotation kept is the riichi declaration tile, laid sideways in the
- * river. That is not an orientation preference — it is how a table records
- * *when* riichi was called, so it carries information the board would otherwise
- * lose.
+ * The rows themselves stay horizontal and keep reading left to right. Turning
+ * the *faces* is what tells you whose tiles you are looking at; turning the
+ * layout as well would scramble discard order for three seats out of four, which
+ * is information a study tool cannot afford to lose.
+ *
+ * A quarter turn on top of the seat's own orientation still means what it always
+ * means at a table: the riichi tile in a river, and the claimed tile in a meld.
+ * Both are relative to the owner, which is why they compose rather than replace.
  */
-const RIICHI_ROTATION: Rotation = 90;
+const SEAT_ROTATION: Record<Position, Rotation> = {
+  bottom: 0,
+  // The seat on the right faces left across the felt, so the top of their tiles
+  // points left: a quarter turn anticlockwise, not clockwise.
+  right: 270,
+  top: 180,
+  left: 90,
+};
+
+/** A quarter turn clockwise on top of whatever the owner's orientation is. */
+function turned(base: Rotation): Rotation {
+  return ((base + 90) % 360) as Rotation;
+}
 
 function windFor(seat: Seat, oya: Seat): string {
   return SEAT_WINDS[(seat - oya + 4) % 4];
 }
 
-function River({ seat, position, size }: { seat: SeatState; position: Position; size: TileSize }) {
+function River({
+  seat,
+  position,
+  size,
+  offering,
+}: {
+  seat: SeatState;
+  position: Position;
+  size: TileSize;
+  /** This seat just made the discard a call puzzle is asking about. */
+  offering?: boolean;
+}) {
+  const base = SEAT_ROTATION[position];
+  const last = seat.river.length - 1;
   return (
     <div className={`board__river board__river--${position}`}>
-      {seat.river.map((entry, i) => (
-        <TileView
-          key={`${entry.tile}-${i}`}
-          tile={entry.tile}
-          size={size}
-          rotation={entry.riichi ? RIICHI_ROTATION : 0}
-          spent={entry.called}
-          describedAs={entry.called ? 'claimed' : entry.riichi ? 'riichi tile' : undefined}
-          muted
-        />
-      ))}
+      {seat.river.map((entry, i) => {
+        // The tile a call is *on* is the newest one in this river, and it is the
+        // whole subject of the question. Unmarked, a solver had to work out which
+        // of twenty discards they were being asked about.
+        const offered = Boolean(offering) && i === last;
+        return (
+          <TileView
+            key={`${entry.tile}-${i}`}
+            tile={entry.tile}
+            size={size}
+            rotation={entry.riichi ? turned(base) : base}
+            spent={entry.called}
+            offered={offered}
+            describedAs={
+              offered
+                ? 'offered for a call'
+                : entry.called
+                  ? 'claimed'
+                  : entry.riichi
+                    ? 'riichi tile'
+                    : undefined
+            }
+            muted={!offered}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -109,6 +152,7 @@ function Melds({
   // Rendered even when empty. Returning null here made a seat's whole column
   // shorter until it called something, so any call mid-hand shifted every
   // control below the board — the row's height is reserved in CSS instead.
+  const base = SEAT_ROTATION[position];
   return (
     <div className={`board__melds board__melds--${position}`}>
       {seat.melds.map((meld, i) => (
@@ -118,8 +162,9 @@ function Melds({
               key={`${entry.tile ?? 'back'}-${j}`}
               tile={entry.tile}
               size={size}
-              // Sideways, the way a claimed tile is laid on a real table.
-              rotation={entry.claimed ? 90 : 0}
+              // Sideways relative to its owner, the way a claimed tile is laid on
+              // a real table.
+              rotation={entry.claimed ? turned(base) : base}
               describedAs={entry.claimed ? claimedFrom(meld.from, owner) : undefined}
             />
           ))}
@@ -137,6 +182,8 @@ function Hand({
   interactive,
   onSelect,
   accentFor,
+  selectable,
+  withheld,
 }: {
   seat: SeatState;
   position: Position;
@@ -145,14 +192,18 @@ function Hand({
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
   accentFor?: (tile: Tile) => 'best' | 'good' | 'bad' | undefined;
+  selectable?: (tile: Tile) => boolean;
+  withheld?: Tile[];
 }) {
   // Contents genuinely unrecorded: draw the right number of backs and never
   // reveal them, whatever the reveal toggle says.
+  const base = SEAT_ROTATION[position];
+
   if (seat.unknownCount !== undefined) {
     return (
       <div className={`board__hand board__hand--${position}`}>
         {Array.from({ length: Math.max(0, seat.unknownCount) }, (_, i) => (
-          <TileView key={i} size={size} />
+          <TileView key={i} size={size} rotation={base} />
         ))}
       </div>
     );
@@ -169,25 +220,59 @@ function Hand({
   }
   const ordered = sortTiles(resting);
 
+  // Tiles promised to a call the solver has started but not finished. Matched by
+  // count rather than by value, so a hand holding two 2 circles loses exactly the
+  // one the call eats and keeps the other in play.
+  const remaining = new Map<Tile, number>();
+  for (const tile of withheld ?? []) remaining.set(tile, (remaining.get(tile) ?? 0) + 1);
+  const takenByCall = (tile: Tile): boolean => {
+    const left = remaining.get(tile) ?? 0;
+    if (left <= 0) return false;
+    remaining.set(tile, left - 1);
+    return true;
+  };
+
   return (
     <div className={`board__hand board__hand--${position}`}>
-      {ordered.map((tile, i) => (
-        <TileView
-          key={`${tile}-${i}`}
-          tile={reveal ? tile : undefined}
-          size={size}
-          accent={reveal ? accentFor?.(tile) : undefined}
-          onSelect={interactive && reveal ? onSelect : undefined}
-        />
-      ))}
+      {ordered.map((tile, i) => {
+        const taken = takenByCall(tile);
+        const allowed = !taken && (selectable === undefined || selectable(tile));
+        return (
+          <TileView
+            key={`${tile}-${i}`}
+            tile={reveal ? tile : undefined}
+            size={size}
+            rotation={base}
+            accent={reveal ? accentFor?.(tile) : undefined}
+            onSelect={interactive && reveal && allowed ? onSelect : undefined}
+            // A tile the call has eaten is drawn as an empty slot, because it is
+            // already shown in the meld above — left in place it read as a second
+            // copy of a tile the seat holds once.
+            spent={taken}
+            // Illegal ones are only dimmed, not hidden: the point of restricting
+            // the legal set is to show *which* tiles the branch rules out, and a
+            // tile that has vanished teaches nothing.
+            muted={reveal && !allowed && !taken}
+            describedAs={
+              taken ? 'moved into the call' : reveal && !allowed ? 'not legal here' : undefined
+            }
+          />
+        );
+      })}
       {drawn && (
         <span className="board__drawn">
           <TileView
             tile={reveal ? drawn : undefined}
             size={size}
+            rotation={base}
             drawn
             accent={reveal ? accentFor?.(drawn) : undefined}
-            onSelect={interactive && reveal ? onSelect : undefined}
+            onSelect={
+              interactive && reveal && (selectable === undefined || selectable(drawn))
+                ? onSelect
+                : undefined
+            }
+            muted={reveal && selectable !== undefined && !selectable(drawn)}
             describedAs="just drawn"
           />
         </span>
@@ -234,6 +319,31 @@ export interface GameBoardProps {
   onSelect?: (tile: Tile) => void;
   accentFor?: (tile: Tile) => 'best' | 'good' | 'bad' | undefined;
   /**
+   * Which of the viewer's tiles may be picked, when the branch restricts them.
+   *
+   * Declaring riichi allows only the tiles that keep the hand tenpai, which is
+   * often five where playing on allows twelve. Showing the rest dimmed rather
+   * than removing them is the point: the narrowing is the lesson.
+   */
+  selectable?: (tile: Tile) => boolean;
+  /**
+   * A call the solver has committed to but not yet finished.
+   *
+   * Drawn as a meld in front of the viewer, with the consumed tiles taken out of
+   * the hand, so the eleven tiles left to choose a discard from are the eleven
+   * shown rather than something the solver has to work out.
+   */
+  pendingMeld?: {
+    kind: MeldKind;
+    called: Tile;
+    consumed: Tile[];
+    from?: Seat;
+    /** The call was actually played, rather than being part-way chosen. */
+    settled?: boolean;
+  };
+  /** Seat whose newest discard is the one a call puzzle is asking about. */
+  offerFrom?: Seat;
+  /**
    * Rendered on the felt, immediately above the viewer's hand.
    *
    * Riichi and call puzzles are answered with buttons rather than by clicking a
@@ -260,6 +370,9 @@ export function GameBoard({
   onSelect,
   accentFor,
   overlay,
+  selectable,
+  pendingMeld,
+  offerFrom,
 }: GameBoardProps) {
   const layout = seatLayout(viewer);
   const positions: Array<[Position, Seat]> = [
@@ -275,7 +388,13 @@ export function GameBoard({
         {positions.map(([position, seat]) => {
           const state = snapshot.seats[seat];
           const reveal = revealAll || seat === viewer;
-          const handSize: TileSize = position === 'bottom' ? 'lg' : 'sm';
+          // One size for everything an opponent shows, one for everything the
+          // viewer does. Opponents' hands used to be a size larger than their own
+          // rivers, and once turned a quarter that row became wide enough that
+          // the three-column table no longer fitted its own container — the
+          // document overflowed on any window under 1000px, and even at 1400 the
+          // felt was 11px over its own width.
+          const handSize: TileSize = position === 'bottom' ? 'lg' : 'xs';
           const riverSize: TileSize = position === 'bottom' ? 'sm' : 'xs';
 
           const plate = (
@@ -287,19 +406,61 @@ export function GameBoard({
               active={snapshot.actor === seat}
             />
           );
+          const isViewer = seat === viewer;
           const hand = (
             <Hand
               seat={state}
               position={position}
               reveal={reveal}
               size={handSize}
-              interactive={interactive && seat === viewer}
+              interactive={interactive && isViewer}
               onSelect={onSelect}
-              accentFor={seat === viewer ? accentFor : undefined}
+              accentFor={isViewer ? accentFor : undefined}
+              selectable={isViewer ? selectable : undefined}
+              withheld={isViewer ? pendingMeld?.consumed : undefined}
             />
           );
-          const melds = <Melds seat={state} owner={seat} position={position} size={riverSize} />;
-          const river = <River seat={state} position={position} size={riverSize} />;
+          const melds = (
+            <>
+              <Melds seat={state} owner={seat} position={position} size={riverSize} />
+              {isViewer && pendingMeld && (
+                <div
+                  className={`board__melds board__melds--pending${
+                    pendingMeld.settled ? ' board__melds--settled' : ''
+                  }`}
+                >
+                  <span className="board__meld">
+                    {arrangeMeld(
+                      {
+                        kind: pendingMeld.kind,
+                        tiles: [...pendingMeld.consumed, pendingMeld.called],
+                        from: pendingMeld.from,
+                      },
+                      seat,
+                    ).map((entry, j) => (
+                      <TileView
+                        key={`${entry.tile ?? 'back'}-${j}`}
+                        tile={entry.tile}
+                        size={handSize}
+                        rotation={entry.claimed ? 90 : 0}
+                        describedAs={
+                          entry.claimed ? claimedFrom(pendingMeld.from, seat) : 'called with'
+                        }
+                      />
+                    ))}
+                  </span>
+                </div>
+              )}
+            </>
+          );
+          const river = (
+            <River
+              seat={state}
+              position={position}
+              size={riverSize}
+              offering={seat === offerFrom}
+            />
+          );
 
           // Every seat reads the same way: what they have shown — discards, then
           // called melds — above the hand they are still holding, with the seat

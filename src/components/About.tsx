@@ -30,13 +30,25 @@ export function About({ meta }: { meta: BankMeta }) {
         got there.
       </p>
 
+      <h3>What you are asked</h3>
+      <p>
+        Most positions ask which tile to discard. Where a riichi or a call is available you play the
+        whole decision out: declare or not, and then which tile — from the tiles that branch actually
+        allows, which is usually a much shorter list once you have declared. A call asks whether to
+        take the tile, which set to take it with, and what to throw afterwards. Every one of those
+        lines is scored separately, so calling correctly and then throwing the wrong tile is not the
+        same answer as calling correctly.
+      </p>
+
       <h3>Who decides the answer</h3>
       <p>
         Answers come from <em>akochan</em>, an open mahjong engine that searches ahead and scores
         each option by how it changes your expected finishing position. A second judge has to agree
         before a puzzle is published: for tile choices that is a neural network trained on twenty
-        million decisions by strong players, and for riichi calls it is the player who was actually
-        sitting there. Where the two disagree, the position is thrown out rather than guessed at.
+        million decisions by strong players, and for riichi and call decisions it is the player who
+        was actually sitting there. Where the two disagree, the position is thrown out rather than
+        guessed at. The human only ever chose a branch, so that is all they are asked to agree
+        about — not which of five riichi discards was best.
       </p>
       <p>
         Answers are given in <strong>placement points</strong> — what a choice is worth in final

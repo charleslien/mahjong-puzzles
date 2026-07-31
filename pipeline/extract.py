@@ -395,6 +395,14 @@ def extract_from_events(
                 if not options:
                     continue
                 taken = _call_taken(events_list, event_index, other)
+                # The tile on offer, and who put it there. `observe` is taken
+                # before `state.dahai` applies the discard, so the tile is in
+                # nobody's river yet and the position would otherwise not record
+                # it at all — leaving a call puzzle unable to say what it is a
+                # call *on*, and the board unable to draw the meld it would make.
+                position = state.observe(other)
+                position["calledTile"] = normalize_tile(event["pai"])
+                position["calledFrom"] = actor
                 pending.append(
                     {
                         "gameId": game_id,
@@ -405,7 +413,7 @@ def extract_from_events(
                         "eventIndex": event_index + 1,
                         "kind": "call",
                         "actor": other,
-                        "position": state.observe(other),
+                        "position": position,
                         "actionTaken": taken or "pass",
                         "calledTile": normalize_tile(event["pai"]),
                         "callOptions": options,

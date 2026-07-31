@@ -551,6 +551,15 @@ kbd {
   outline-offset: 1px;
 }
 
+/* The tile a call puzzle is asking about. Every other river tile is muted, so
+   this one reads as the subject of the question rather than as one more
+   discard. */
+.tile--offered .tile__img {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.22);
+}
+
 /* ---------------------------------------------------------------------------
    The table
 
@@ -662,7 +671,13 @@ kbd {
   min-width: calc(14 * 44px * var(--tile-scale) + 40px);
 }
 
-.board__hand--top,
+.board__hand--top {
+  min-width: calc(14 * 18px * var(--tile-scale) + 34px);
+}
+
+/* The side seats' tiles are turned a quarter, so each one occupies its face
+   *height* across the row — 24px for an xs tile, not 18. Reserving the upright
+   width let the row overflow its column the moment those seats were revealed. */
 .board__hand--left,
 .board__hand--right {
   min-width: calc(14 * 24px * var(--tile-scale) + 34px);
@@ -688,11 +703,17 @@ kbd {
   min-width: calc(6 * 24px * var(--tile-scale) + 10px);
 }
 
-.board__river--top,
-.board__river--left,
-.board__river--right {
+.board__river--top {
   min-height: calc(4 * 24px * var(--tile-scale) + 6px);
   min-width: calc(6 * 18px * var(--tile-scale) + 10px);
+}
+
+/* Turned a quarter, so the block's two dimensions swap: six columns of 24px
+   faces across, four rows of 18px down. */
+.board__river--left,
+.board__river--right {
+  min-height: calc(4 * 18px * var(--tile-scale) + 6px);
+  min-width: calc(6 * 24px * var(--tile-scale) + 10px);
 }
 
 .plate {
@@ -780,8 +801,12 @@ kbd {
   margin-top: 0.25rem;
 }
 
-/* Narrow screens: one column, opponents above, you at the bottom. */
-@container (max-width: 720px) {
+/* Narrow screens: one column, opponents above, you at the bottom.
+   The threshold is what the three-column table actually needs — two side columns
+   of fourteen turned tiles plus the centre — not a round number. Set at 720 it
+   kept three columns at widths where they did not fit, and the felt pushed the
+   whole document sideways. */
+@container (max-width: 900px) {
   .board__felt {
     grid-template-areas:
       'top'
@@ -1654,10 +1679,147 @@ kbd {
   min-width: 0;
 }
 
-/* The bottom rows have nothing below them to open into. */
-.opt:nth-last-child(-n + 3) .accept {
+/* The bottom rows have nothing below them to open into. Under branch headings
+   the rows are nested, so "near the bottom of the panel" means near the end of
+   the *last* group — a short group at the top is not near anything. */
+.optionlist > .opt:nth-last-child(-n + 3) .accept,
+.optgroup:last-child .optgroup__lines .opt:nth-last-child(-n + 3) .accept {
   top: auto;
   bottom: calc(100% + 0.35rem);
+}
+
+/* ---------------------------------------------------------------------------
+   Branch groups.
+
+   A riichi or call puzzle is a set of lines, and the lines fall into forks: five
+   ways to declare, twelve ways to play on. Sorting all seventeen by value would
+   answer "which is best" and hide "what were my choices", which is the more
+   useful half. Each fork gets a heading and its own rows.
+   --------------------------------------------------------------------------- */
+.optgroup {
+  display: block;
+}
+
+.optgroup + .optgroup {
+  border-top: 1px solid var(--border);
+}
+
+.optgroup__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.3rem 0.7rem;
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.optgroup__name {
+  color: var(--text);
+}
+
+/* How many ways this fork could be played — the number that shows the narrowing
+   a declaration imposes. Pushed to the far edge so the counts line up. */
+.optgroup__count {
+  margin-left: auto;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.optgroup__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.optgroup__more {
+  padding: 0.25rem 0.7rem 0.35rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* Which real hand this position is, shown once it can no longer be used to look
+   the answer up. Quiet: it is a citation, not part of the lesson. */
+.provenance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.7rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.provenance__label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 650;
+}
+
+.provenance__id {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  /* Long, and the one part worth selecting by hand. */
+  overflow-wrap: anywhere;
+}
+
+.provenance__archive {
+  margin-left: auto;
+}
+
+/* Tiles inside a choice button, and the word joining a call to the discard that
+   follows it. */
+.choice__tiles {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.actionlabel__then {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+/* Undo one step of a decision. Quieter than the choices themselves: it is a way
+   out, not one of the answers. */
+.choices__back {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  padding-block: 0.15rem;
+}
+
+.choices__back:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* A call the solver has committed to but not finished, drawn where the finished
+   meld will sit. Dashed, because it has not happened yet. */
+.board__melds--pending {
+  min-height: 0;
+  margin-bottom: 0.2rem;
+}
+
+.board__melds--pending .board__meld {
+  padding: 2px 4px;
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+  border-radius: var(--radius-sm);
+}
+
+/* Once the answer is in, the call is not pending any more — it is the meld the
+   solver made. */
+.board__melds--settled .board__meld {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 /* When every option reduces to the same word, the label column carries nothing

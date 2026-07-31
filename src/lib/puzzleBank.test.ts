@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { analyzePosition } from './analyzePosition';
+import { DIFFICULTY_BANDS } from './difficulty';
 import { NUM_TILE_TYPES, tileToIndex } from './tiles';
 import { bestAction, describeLoss, gradeAnswer } from './grade';
 import { SCHEMA_VERSION, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
@@ -173,6 +174,105 @@ describe('puzzle bank contents', () => {
     }
     // Not asserting a count: a regenerated bank may happen to contain none.
     expect(checked).toBeGreaterThanOrEqual(0);
+  });
+
+  it('gives every line of a multi-step decision a branch and a legal discard', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'riichi' && puzzle.kind !== 'call') continue;
+      for (const action of puzzle.actions) {
+        expect(action.branch, `${puzzle.id} action ${action.id} has no branch`).toBeDefined();
+        // Two branches end without a discard, for different reasons: passing
+        // does nothing at all, and an open kan is followed by a draw from the
+        // dead wall, so the discard belongs to a later decision.
+        if (action.branch === 'pass' || action.branch === 'daiminkan') {
+          expect(action.tile, `${puzzle.id}: ${action.id} discards nothing`).toBeUndefined();
+          continue;
+        }
+        // Every other line ends on a discard, and it has to be a tile the seat
+        // actually holds — after the call has eaten what it eats.
+        expect(action.tile, `${puzzle.id} action ${action.id} has no discard`).toBeDefined();
+        const left = [...puzzle.position.hand];
+        for (const eaten of action.consumed ?? []) {
+          const at = left.indexOf(eaten);
+          expect(at, `${puzzle.id}: ${action.id} eats ${eaten}, not in hand`).toBeGreaterThanOrEqual(
+            0,
+          );
+          left.splice(at, 1);
+        }
+        expect(left, `${puzzle.id}: ${action.id} throws a tile it does not hold`).toContain(
+          action.tile,
+        );
+      }
+    }
+  });
+
+  it('offers a real fork on every multi-step decision', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'riichi' && puzzle.kind !== 'call') continue;
+      const branches = new Set(puzzle.actions.map((action) => action.branch));
+      // One branch is not a decision — it would present a question whose every
+      // answer is the same first move.
+      expect(branches.size, `${puzzle.id} has only ${[...branches]}`).toBeGreaterThan(1);
+      if (puzzle.kind === 'riichi') expect(branches).toContain('riichi');
+      if (puzzle.kind === 'call') expect(branches).toContain('pass');
+    }
+  });
+
+  it('records the tile a call is asked about', () => {
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'call') continue;
+      // Without these the board cannot mark which discard the question is about,
+      // and the meld a call would make cannot be drawn at all.
+      expect(puzzle.position.calledTile, `${puzzle.id} names no called tile`).toBeDefined();
+      expect(puzzle.position.calledFrom, `${puzzle.id} names no discarder`).toBeDefined();
+      expect(puzzle.position.calledFrom).not.toBe(puzzle.position.seat);
+      for (const action of puzzle.actions) {
+        if (!action.consumed?.length) continue;
+        // A call takes the offered tile, so the set it eats comes wholly from
+        // hand: three tiles for a kan, two for anything else.
+        expect(action.consumed.length, `${puzzle.id} ${action.id}`).toBe(
+          action.branch === 'daiminkan' ? 3 : 2,
+        );
+      }
+    }
+  });
+
+  it('never carries a tag that reveals the answer', () => {
+    // These recorded what the houou player did, and a position is only published
+    // when akochan and that player agree on the branch — so the chip shown above
+    // the board *was* the answer, on every riichi and call puzzle in the bank.
+    const spoilers = ['declared', 'stayed-concealed', 'called', 'let-it-pass'];
+    for (const puzzle of puzzles) {
+      for (const spoiler of spoilers) {
+        expect(puzzle.tags, `${puzzle.id} is tagged ${spoiler}`).not.toContain(spoiler);
+      }
+    }
+  });
+
+  it('only claims an efficiency trap where efficiency had a view', () => {
+    // A call is judged with thirteen tiles and no discard to analyse, so there is
+    // no baseline to disagree with. Reading "no opinion" as disagreement put the
+    // site's headline tag on all 713 call and riichi puzzles.
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'call') continue;
+      expect(puzzle.tags, `${puzzle.id}`).not.toContain('efficiency-trap');
+    }
+  });
+
+  it('spreads across the difficulty bands the filter offers', () => {
+    // The bands are calibrated against this distribution, so a regeneration that
+    // shifts the proxy has to be noticed here. Spaced evenly across 0-100 they
+    // held 48% / 50% / 2%, and picking Hard returned a pool small enough to
+    // repeat inside one session.
+    const share = (band: (typeof DIFFICULTY_BANDS)[number]) =>
+      puzzles.filter((p) => p.difficulty >= band.min && p.difficulty <= band.max).length /
+      puzzles.length;
+    for (const band of DIFFICULTY_BANDS) {
+      if (band.id === 'all') continue;
+      expect(share(band), `${band.label} holds ${(share(band) * 100).toFixed(1)}%`).toBeGreaterThan(
+        0.15,
+      );
+    }
   });
 
   it('reports a difficulty inside the documented range', () => {

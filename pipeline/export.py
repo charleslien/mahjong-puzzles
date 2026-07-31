@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -30,6 +31,41 @@ ATTRIBUTION = (
 )
 
 
+def puzzle_id(candidate: Dict[str, Any]) -> str:
+    """A stable identity for a position: the decision it is, not where it landed.
+
+    Ids used to be `mined-00001` by position in the output, which meant every
+    regeneration silently reattached every id to a different hand. Four things
+    went wrong at once, none of them visibly:
+
+      - permalinks pointed at a different position than the one shared;
+      - a solver's history listed hands they had never played;
+      - `puzzle_ratings` is keyed by puzzle id, so the difficulty learned for one
+        position was carried onto whatever inherited its number;
+      - `attempts.puzzle_id` cascades on delete, so pruning positions that had
+        genuinely gone deleted the attempt history of positions that had not.
+
+    And because the full bank and the capped offline bundle were numbered
+    independently, the same id named two different puzzles depending on which
+    source a visitor was served — so offline progress synced on sign-in landed on
+    the wrong rows.
+
+    (gameId, decisionIndex) identifies the decision, and extract.py assigns
+    decisionIndex in log order within a game, independent of any mining
+    parameter. So the same position keeps its id across regenerations, and a
+    position that really has gone takes its attempts with it.
+    """
+    game = str(candidate.get("gameId") or "").replace(".mjson", "")
+    index = candidate.get("decisionIndex")
+    if game and index is not None:
+        seed = "{}#{}".format(game, index)
+    else:
+        # Hand-authored positions point at no log. The position itself is the
+        # next most stable thing available.
+        seed = json.dumps(candidate.get("position"), sort_keys=True)
+    return "p" + hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+
+
 def to_puzzle(candidate: Dict[str, Any], puzzle_id: str) -> Dict[str, Any]:
     """Convert one screened candidate into a site puzzle."""
     actions_in = candidate["actions"]
@@ -45,7 +81,11 @@ def to_puzzle(candidate: Dict[str, Any], puzzle_id: str) -> Dict[str, Any]:
             "loss": max(0.0, best_ev - action["ev"]),
             "accepted": action["id"] in accepted,
         }
-        for optional in ("tile", "policy", "shantenAfter", "ukeire"):
+        # `branch` and `consumed` are what let the site ask the decision as a
+        # sequence — declare or not, then which tile; call or not, then with
+        # which set, then what to throw — instead of as a flat list of lines
+        # the player would have to read to find the one they meant.
+        for optional in ("branch", "consumed", "tile", "policy", "shantenAfter", "ukeire"):
             if action.get(optional) is not None:
                 entry[optional] = action[optional]
         actions.append(entry)
@@ -231,7 +271,11 @@ def balance_by_answer(
         by_answer: Dict[str, List[Dict[str, Any]]] = {}
         for candidate in group:
             best = max(candidate["actions"], key=lambda action: action["ev"])
-            by_answer.setdefault(best["id"], []).append(candidate)
+            # By branch where there is one. The reflex a bank of calls can teach
+            # is "never call", not "never chi with 2s+3s and throw the 5m" — and
+            # grouping by the full line would put every call in a bucket of one,
+            # leaving `pass` a majority against nothing.
+            by_answer.setdefault(best.get("branch") or best["id"], []).append(candidate)
 
         minority = sum(len(rows) for answer, rows in by_answer.items()
                        if len(rows) != max(len(other) for other in by_answer.values()))
@@ -297,10 +341,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "capping {} puzzles to {}\n".format(len(candidates), len(kept))
         )
         candidates = kept
-    puzzles = [
-        to_puzzle(candidate, "mined-{:05d}".format(i + 1))
-        for i, candidate in enumerate(candidates)
-    ]
+    puzzles = [to_puzzle(candidate, puzzle_id(candidate)) for candidate in candidates]
+    ids = {puzzle["id"] for puzzle in puzzles}
+    if len(ids) != len(puzzles):
+        # Two positions hashing alike, or the same decision exported twice.
+        # Either way the bank would silently lose one on upload, since the table
+        # is keyed by id and the upload upserts.
+        sys.stderr.write(
+            "{} puzzles but only {} distinct ids\n".format(len(puzzles), len(ids))
+        )
+        return 1
     index = write_bank(
         puzzles, args.output, args.generated_at, shard_size=args.shard_size
     )

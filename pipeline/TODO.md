@@ -148,54 +148,61 @@ index integrity.
 - [x] **Answer balancing.** Calls came out 84% "pass"; capped at 60% so the bank
       cannot be beaten by reflex.
 
-## 8. Next: play call and riichi decisions out in full
+## 8. Call and riichi decisions are played out in full — done
 
-The biggest known problem with the bank. A riichi puzzle currently asks a binary
-question — declare, or the single best concealed line — and a call puzzle asks
-call-or-pass with one pre-chosen follow-up discard. Both throw away most of the
-decision, and both feel awkward to play because the interesting part (which tile,
-which set) has already been decided for you.
+A riichi puzzle used to ask a binary question — declare, or the single best
+concealed line — and a call puzzle asked call-or-pass with one pre-chosen
+follow-up discard. Both threw away most of the decision, and both felt awkward to
+play because the interesting part (which tile, which set) had already been
+decided for you.
 
-**akochan already returns the whole tree.** Measured on two real positions:
+**akochan was already returning the whole tree**; the pipeline was collapsing it.
+Every line is now published as its own action:
 
-    riichi position: 17 lines -> 5 x (reach + a specific discard)
-                                 12 x (a plain discard)
-    call position:    9 lines -> 1 x (none)
-                                 8 x (chi with a specific set + a discard)
+    {"id": "riichi:3p",    "branch": "riichi", "tile": "3p"}
+    {"id": "discard:9p",   "branch": "dama",   "tile": "9p"}
+    {"id": "pass",         "branch": "pass"}
+    {"id": "chi:2s+3s:5m", "branch": "chi", "consumed": ["2s","3s"], "tile": "5m"}
 
-Note the 5 against 12: only tiles that keep tenpai may be discarded on a
-declaration, which is exactly the narrowing the interface should show. The
-pipeline collapses all of this to two options in `build_riichi_actions` and
-`build_call_actions`.
+The consumed set is part of the identity: chi-ing 4s with 2s+3s and with 3s+5s
+are different plays, and so is using the red five rather than the plain one.
+`daiminkan` lines carry no tile — the discard after an open kan follows a draw
+from the dead wall and belongs to a later decision.
 
-What to change:
+The interface walks the branch, and the legal tiles narrow with it: a sampled
+position offers 3 ways to declare against 12 ways to play on, and the illegal
+ones are dimmed rather than hidden, since the narrowing is the lesson. A branch
+with one line resolves without asking.
 
-1. Emit every line as an action, with a structured id and fields rather than a
-   prose label:
+**Two things measured rather than assumed:**
 
-       {"id": "riichi:3p",            "branch": "riichi", "tile": "3p"}
-       {"id": "dama:9p",              "branch": "dama",   "tile": "9p"}
-       {"id": "pass",                 "branch": "pass"}
-       {"id": "chi:2s|3s:5m",         "branch": "chi", "consumed": ["2s","3s"], "tile": "5m"}
+- *Criteria needed no retuning.* The worry was that seventeen lines instead of
+  two would push everything into `margin_too_small` or `too_many_answers`.
+  Measured over a 1,200-candidate slice, yields are unchanged: 250 call and 30
+  riichi puzzles against 241 and 28 scaled from the previous run, with the accept
+  set still a median of 1 and a maximum of 3. Adding weaker lines does not move
+  the gap between the best line and the best rejected one.
+- *Agreement is judged per branch, not per line.* The second evaluator is the
+  houou player who was there, and all they expressed is which branch they took.
+  Comparing full lines would manufacture disagreement about a ranking one
+  evaluator never gave.
 
-   The consumed set has to be part of the identity: chi-ing 4s with 2s+3s and
-   with 3s+5s are different plays, and so is using the red five rather than the
-   plain one.
+**Two bugs this surfaced**, both of which had been shipping:
 
-2. Grading needs no change in principle — a chosen line is compared to the best
-   line — but `criteria.py` will see many more actions per puzzle, so
-   `DEFAULT_MAX_ACCEPTED` and the margin test want re-tuning against real
-   distributions rather than assumed ones. Expect `too_many_answers` to rise.
+- The `declared` / `stayed-concealed` and `called` / `let-it-pass` tags were
+  drawn as chips above the board *before* the puzzle was answered. Since a
+  position is only published when akochan and the houou player agree on the
+  branch, the chip was the answer — it predicted it in 169 of 169 riichi and 544
+  of 544 call puzzles. `tags_for` no longer emits anything derived from the
+  answer, and the bank audit checks for those four strings.
+- `naive_disagreement` read a missing efficiency baseline as disagreement, so all
+  713 call and riichi puzzles carried `efficiency-trap` — the headline category —
+  plus the +12 difficulty it is worth, on a comparison that never ran.
 
-3. The interface walks the branch: declare or not, then which set if a call has
-   several, then which tile from the hand — restricted to the legal set for that
-   branch, which is where the 5-versus-12 narrowing becomes visible and useful.
-
-4. Regenerate. Verification is the slow part, and calls run at roughly 0.7
-   positions/s against 5 for a discard.
-
-Do this as one change: a bank of line-level actions rendered by an interface that
-still expects two options would be worse than either.
+`extract.py` also now records `calledTile` and `calledFrom` on a call position.
+`observe()` runs before the discard is applied, so the tile on offer was in
+nobody's river and the position did not record it anywhere: the board could not
+mark which discard was being asked about, nor draw the meld a call would make.
 
 ## 9. Remaining
 

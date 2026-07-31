@@ -96,7 +96,16 @@ def naive_disagreement(
     This is the mahjong analogue of Lichess's shallow-vs-deep filter, and it is
     what separates an instructive puzzle from a position where the obvious play
     is simply correct.
+
+    An *empty* baseline means efficiency was never computed — a call is judged
+    with thirteen tiles and no discard to analyse — and no opinion is not a
+    disagreement. Read as one, this returned True for every call and riichi
+    puzzle in the bank: 713 of them carried `efficiency-trap`, the site's
+    headline category, on the strength of a comparison that never happened, and
+    each collected the +12 difficulty that flag is worth.
     """
+    if not ukeire_best:
+        return False
     return model_best not in set(ukeire_best)
 
 

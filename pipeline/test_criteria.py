@@ -23,7 +23,7 @@ from pipeline.criteria import (
     naive_disagreement,
     screen_candidate,
 )
-from pipeline.export import to_puzzle, write_bank
+from pipeline.export import puzzle_id, to_puzzle, write_bank
 
 
 def actions(*pairs):
@@ -86,6 +86,14 @@ class NaiveDisagreementTest(unittest.TestCase):
 
     def test_quiet_when_efficiency_agrees(self):
         self.assertFalse(naive_disagreement("a", ["a", "b"]))
+
+    def test_no_baseline_is_no_opinion(self):
+        # A call is judged with thirteen tiles and no discard to analyse, so there
+        # is no efficiency baseline. Read as disagreement, this tagged every call
+        # and riichi puzzle `efficiency-trap` — the site's headline category, on
+        # 713 puzzles where the comparison never ran — and gave each of them the
+        # +12 difficulty that flag carries.
+        self.assertFalse(naive_disagreement("a", []))
 
 
 class DifficultyTest(unittest.TestCase):
@@ -227,3 +235,46 @@ class ExportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PuzzleIdTest(unittest.TestCase):
+    """Ids identify a decision, not a place in the output.
+
+    Numbering by export order meant a regeneration reattached every id to a
+    different hand — silently, since the bank still looked well-formed. Permalinks
+    moved, solvers' histories listed hands they had never seen, Glicko ratings
+    carried one position's difficulty onto another, and because `attempts`
+    cascades on delete, pruning positions that had gone deleted the attempts of
+    positions that had not.
+    """
+
+    def candidate(self, game="2010042320gm-00a9.mjson", index=7):
+        return {"gameId": game, "decisionIndex": index, "position": {"seat": 0}}
+
+    def test_the_same_decision_always_gets_the_same_id(self):
+        self.assertEqual(puzzle_id(self.candidate()), puzzle_id(self.candidate()))
+
+    def test_a_different_decision_gets_a_different_id(self):
+        first = puzzle_id(self.candidate())
+        self.assertNotEqual(first, puzzle_id(self.candidate(index=8)))
+        self.assertNotEqual(first, puzzle_id(self.candidate(game="other.mjson")))
+
+    def test_the_id_does_not_depend_on_export_order(self):
+        # The capped offline bundle is a subset of the full bank and used to be
+        # numbered independently, so the same id named two different puzzles
+        # depending on which source a visitor was served.
+        bank = [self.candidate(index=i) for i in range(6)]
+        bundle = [bank[0], bank[3], bank[5]]
+        by_index = {c["decisionIndex"]: puzzle_id(c) for c in bank}
+        for candidate in bundle:
+            self.assertEqual(puzzle_id(candidate), by_index[candidate["decisionIndex"]])
+
+    def test_the_log_extension_is_not_part_of_the_identity(self):
+        self.assertEqual(
+            puzzle_id(self.candidate(game="g.mjson")), puzzle_id(self.candidate(game="g"))
+        )
+
+    def test_an_authored_position_still_gets_an_id(self):
+        authored = {"position": {"seat": 2, "hand": ["1m"]}}
+        self.assertTrue(puzzle_id(authored))
+        self.assertEqual(puzzle_id(authored), puzzle_id(dict(authored)))

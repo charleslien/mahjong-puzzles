@@ -78,14 +78,37 @@ export interface Position {
   tilesLeft: number;
 }
 
+/**
+ * The first move of a line, and the first question the solver is asked.
+ *
+ * A mahjong decision is a *line*, not a verb: declaring riichi and then throwing
+ * the 9 circles is a different play from declaring and throwing the 3 circles,
+ * and the two are not equally good. So actions are lines, and the branch is what
+ * groups them — it is the fork the solver picks first, after which the legal
+ * tiles narrow to that branch's own set. Declaring restricts you to tiles that
+ * keep tenpai, which is usually a much shorter list than playing on.
+ *
+ * Absent on a plain discard puzzle, where there is no fork.
+ */
+export type ActionBranch = 'riichi' | 'dama' | 'pass' | 'chi' | 'pon' | 'daiminkan';
+
 export interface PuzzleAction {
   /**
-   * Stable action identifier. Discards are `discard:<tile>`; other decisions use
-   * bare verbs (`riichi`, `damaten`, `pass`, `pon`, `chi:<tiles>`, `kan`).
+   * Stable action identifier, naming the whole line:
+   * `discard:<tile>`, `riichi:<tile>`, `pass`,
+   * `chi:<consumed joined by +>:<tile discarded after>`.
+   *
+   * The consumed set is part of the identity because chi-ing 4 bamboo with
+   * 2+3 leaves a different hand than chi-ing it with 3+5, and eating the red
+   * five rather than the plain one gives away a dora.
    */
   id: string;
   label: string;
-  /** Present for discard actions, so the UI can bind it to a tile in the hand. */
+  /** Which fork of the decision this line takes; absent on plain discards. */
+  branch?: ActionBranch;
+  /** Tiles taken out of the hand to make the call, for call lines. */
+  consumed?: Tile[];
+  /** The tile this line discards. A call line has one too: the throw after it. */
   tile?: Tile;
   /** Expected final placement points for this action. */
   ev: number;

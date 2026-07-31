@@ -1,3 +1,4 @@
+import { BRANCH_LABELS } from '../lib/decision';
 import type { Puzzle } from '../types/puzzle';
 import { TileView } from './TileView';
 
@@ -28,16 +29,28 @@ export function ActionLabel({
   showTile = true,
   size = 'sm',
 }: {
-  action: Pick<Puzzle['actions'][number], 'label' | 'tile'>;
+  action: Pick<Puzzle['actions'][number], 'label' | 'tile' | 'branch' | 'consumed'>;
   /** Off where the tile already has its own column. */
   showTile?: boolean;
   size?: 'xs' | 'sm' | 'md';
 }) {
-  const text = stripTileName(action.label);
+  // A line that names a branch describes itself from its own fields, which is
+  // the only way to show the tiles a call eats as tiles. Stripping them out of
+  // "Call chi with 2 bamboo and 3 bamboo, then discard 5 characters" would leave
+  // two of the three tiles still spelled out in words.
+  const text = action.branch ? BRANCH_LABELS[action.branch] : stripTileName(action.label);
   return (
     <span className="actionlabel">
       <span>{text}</span>
-      {showTile && action.tile && <TileView tile={action.tile} size={size} />}
+      {action.consumed?.map((tile, index) => (
+        <TileView key={`${tile}-${index}`} tile={tile} size={size} />
+      ))}
+      {showTile && action.tile && (
+        <>
+          {action.consumed?.length ? <span className="actionlabel__then">then</span> : null}
+          <TileView tile={action.tile} size={size} />
+        </>
+      )}
     </span>
   );
 }

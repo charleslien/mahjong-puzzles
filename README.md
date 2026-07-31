@@ -4,27 +4,30 @@ Riichi mahjong decision drills, mined from real games and graded by evaluation
 loss. A static site, deployed on Vercel, with an offline generation pipeline that
 never runs in the browser.
 
-**Current state:** the site is complete and playable against 220 puzzles mined
-from real Tenhou houou-room hanchan, each with its hand history replayable in
-context. The *positions* are real; the *evaluation* is still the tile-efficiency
-baseline rather than an AI eval. A discard model now trains on real data and
-reaches 66.8% agreement with houou play on held-out games — wiring it in as the
-evaluator is the remaining step. See [pipeline/TODO.md](pipeline/TODO.md).
+**Current state:** complete and playable. The bank is mined from real Tenhou
+houou-room hanchan held out of model training, and every expected value comes
+from [akochan](https://github.com/critter-mj/akochan)'s search in Tenhou
+placement points — not from a tile-efficiency baseline. Discards, riichi
+decisions and calls are all populated; riichi and call puzzles are played out as
+whole lines rather than as binary questions. Each puzzle carries its hand history
+so the position can be replayed in context. Remaining work is in
+[pipeline/TODO.md](pipeline/TODO.md).
 
 ## Quick start
 
 ```bash
 npm install
-npm run build:puzzles -- pipeline/data/2010 220   # mine the bank from real logs
-npm run build:replays  # generate simulated replay logs into public/replays/
-npm run dev            # http://localhost:5173/
-npm test               # 65 tests
-python3 -m unittest discover -s pipeline -t .   # 65 tests
+npm run dev     # http://localhost:5173/
+npm test        # vitest, including audits of the bank on disk
+python3 -m unittest discover -s pipeline -t .
 ```
 
-The puzzle bank and tile artwork are both committed, so those build steps are
-only needed to regenerate them. `build:puzzles` wants a directory of mjai logs —
-grab a year from the
+The puzzle bank and tile artwork are both committed, so nothing has to be
+generated to run the site. To rebuild the bank end to end — extract, mine,
+annotate, verify with akochan, export, upload — use
+[`scripts/run-pipeline.sh`](scripts/run-pipeline.sh); it needs a trained
+checkpoint, an akochan build (`scripts/build-akochan.sh`) and a directory of mjai
+logs, which you can grab from the
 [tenhou-to-mjai releases](https://github.com/NikkeTryHard/tenhou-to-mjai/releases).
 `build:tiles` takes the path to a clone of
 [riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles).
@@ -35,16 +38,18 @@ Vercel builds from this repository. Import the repo once and it needs no further
 setup: `vercel.json` pins the framework, build command and output directory, and
 Vercel runs `npm run build` on every push to `main`.
 
-The generated tile artwork, puzzle bank and replay logs all live in `public/` and
-are committed, so a deploy is a plain static build with no extra steps.
+The generated tile artwork and the fallback puzzle bank both live in `public/`
+and are committed, so a deploy is a plain static build with no extra steps. The
+database copy of the bank is uploaded separately, by the pipeline — see
+**Two homes for the bank** below.
 
 Vite's `base` defaults to `/` because Vercel serves from the domain root. Every
 asset reference goes through `import.meta.env.BASE_URL`, so hosting under a
 subpath only needs `BASE_PATH` set at build time — GitHub Pages, for instance,
 would want `BASE_PATH=/mahjong-puzzles/`.
 
-Routing is hash-based (`#/train`, `#/replay`), so no SPA rewrite rules are
-required.
+Routing is hash-based (`#/train`, `#/progress`, `#/about`, `#/p/<id>`), so no SPA
+rewrite rules are required.
 
 `.github/workflows/ci.yml` only runs types, tests and a build. Deployment is
 Vercel's job.
@@ -125,16 +130,17 @@ src/lib/           the mahjong core, shared by site and generators
   ukeire.ts        acceptance counting, the naive baseline
   replay.ts        mjai event stream -> steppable snapshots
   grade.ts         loss -> grade buckets, per-unit thresholds
-  puzzleBank.ts    bank loading, filtering, deterministic shuffle
+  decision.ts      flat action list -> the steps a player meets
+  puzzleSource.ts  the bank, from Supabase or from the committed JSON
 
 src/components/
   GameBoard.tsx    four-sided table; per-seat tile rotation
-  ReplayView.tsx   step/scrub/play through a hand
-  PuzzleView.tsx   the drill, on the same board
+  PuzzleView.tsx   the drill, with the hand's history scrubbable in place
+  DecisionSteps.tsx  one step of a multi-step decision
+  Feedback.tsx     the option table, grouped by branch
 
 public/tiles/      CC0 tile artwork, composited (generated)
-public/puzzles/    the shipped bank (generated)
-public/replays/    simulated demo logs (generated)
+public/puzzles/    the offline fallback bank (generated, capped, committed)
 ```
 
 ### No model in the browser
@@ -144,6 +150,25 @@ delivered to a browser are trivially extractable, so shipping them would recreat
 exactly the risk that keeps Mortal's weights private. This constrains the design
 — it rules out an "evaluate any position" free-play mode — and that is an accepted
 cost, not an oversight.
+
+### Two homes for the bank
+
+The bank exists twice, deliberately, and the two are not the same size:
+
+- **Supabase** holds everything. The site asks for one session's worth at a time
+  through an indexed `shuffle_key` sample, so bank size costs nothing per visit —
+  a session is ~130 kB rather than the whole 5.7 MB.
+- **`public/puzzles/`** is the offline fallback, served when `VITE_PUZZLE_SOURCE`
+  is not `supabase` or the database is unreachable. It is fetched whole and it
+  lives in git, so `run-pipeline.sh` caps it (`FALLBACK_SIZE`, default 1200).
+
+They are expected to differ in size and to agree in content, with the bundle a
+subset. The failure this creates is silent rather than loud: regenerating
+`public/puzzles/` without uploading leaves the deployed site serving the previous
+bank, working perfectly, showing puzzles that no longer exist on disk. The upload
+is therefore a step of `run-pipeline.sh` rather than something to remember, and
+`upload-bank.mjs` prunes rows the new bank no longer contains and then checks the
+table count against it.
 
 ### Two evaluation units, never mixed
 
@@ -177,15 +202,18 @@ them — worth doing, not done.
 
 ### Tile orientation and layout
 
-Every seat's tiles are upright, in horizontal rows reading left to right, top to
-bottom. An earlier version turned each seat's tiles to face it, the way a real
-table does, and it read worse on both counts: rotated faces are harder to
-identify at a glance, and a river that grows away from its owner scrambles the
-discard order for three of the four seats.
+Each seat's tiles face the seat they belong to: a tile lying on a table reads with
+its top edge away from its owner, so the seat across is upside down and the two
+side seats are on their sides. The *rows* stay horizontal and keep reading left to
+right — turning the faces is what tells you whose tiles you are looking at, while
+turning the layout as well would scramble discard order for three seats out of
+four.
 
-The one rotation kept is the riichi declaration tile, laid sideways in the river.
-That is not an orientation preference — it records *when* riichi was called, so
-it carries information the board would otherwise lose.
+A quarter turn on top of a seat's own orientation keeps its table meaning: the
+riichi declaration tile in a river, and the claimed tile in a meld. Both are
+relative to the owner, so they compose with the seat rotation rather than replace
+it. The claimed tile also sits on the side it came from — left edge, middle,
+right edge — which is how a table shows who fed a call.
 
 Footprints on the felt are reserved rather than fitted: a hand is 14 tiles wide
 while its owner holds a draw and 13 after discarding, a river grows from nothing
@@ -194,10 +222,38 @@ those to content made every control below the board jump on each step through a
 hand's history. The meld row was the least obvious of the three and the largest —
 it is rendered even when empty for exactly this reason.
 
+A turned tile occupies its face *height* across a row, so reserving the upright
+width is wrong by a third. Getting that wrong is not subtle in effect but is
+invisible in code review: the three-column table then does not fit its own
+container, and the whole document scrolls sideways on any window under 1000px.
+The single-column breakpoint is set to what the table actually needs, measured,
+rather than to a round number.
+
 Keyboard: <kbd>←</kbd>/<kbd>→</kbd> step through the hand, <kbd>Home</kbd> jumps
-to the deal, <kbd>Esc</kbd> or <kbd>End</kbd> returns to the decision, and
-<kbd>Enter</kbd> advances — but only once the puzzle is answered, so a stray
-press cannot skip one unsolved.
+to the deal, <kbd>End</kbd> returns to the decision, <kbd>Esc</kbd> or
+<kbd>Backspace</kbd> undoes one step of a part-answered decision, <kbd>1</kbd>–
+<kbd>9</kbd> take a numbered choice, and <kbd>Enter</kbd> advances — but only once
+the puzzle is answered, so a stray press cannot skip one unsolved.
+
+### Decisions are lines, not verbs
+
+A riichi or call puzzle asks the whole decision, one step at a time: declare or
+not and then which tile, or call or not, with which set, and what to throw
+afterwards. Each complete line is its own action with its own expected value, so
+calling correctly and then throwing the wrong tile is not the same answer as
+calling correctly.
+
+The legal tiles narrow with the branch, which is the most useful thing on the
+screen: declaring restricts you to tiles that keep tenpai, and a sampled position
+offers 3 ways to declare against 12 ways to play on. The illegal ones are dimmed
+rather than removed — a tile that has vanished teaches nothing. A branch with one
+line resolves without asking, since a question with a single answer is not a
+question.
+
+The consumed set is part of an action's identity (`chi:2s+3s:5m`): chi-ing 4
+bamboo with 2+3 leaves a different hand than with 3+5, and eating the red five
+gives away a dora. Grouping in the feedback table follows the same rule, so two
+ways to chi the same tile are two headings rather than one confusing list.
 
 ### Difficulty
 
@@ -254,8 +310,8 @@ answer right.
 
 **The mining premise holds.** The design borrows Lichess's shallow-vs-deep filter
 by treating naive-ukeire-vs-model disagreement as the instructiveness signal, so
-it is worth checking that the two actually disagree. Against the 220 shipped
-puzzles (`python -m pipeline.compare_baseline`):
+it is worth checking that the two actually disagree. Measured against a
+220-puzzle bank (`python -m pipeline.compare_baseline`):
 
 ```
 model top-1 matches the ukeire baseline: 168/220 = 76.4%

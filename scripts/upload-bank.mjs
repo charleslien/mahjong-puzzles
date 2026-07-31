@@ -187,16 +187,45 @@ for (let offset = 0; ; offset += 1000) {
 }
 const stale = existingIds.filter((id) => !ids.has(id));
 if (stale.length) {
-  const list = stale.map((id) => `"${id}"`).join(',');
-  const removed = await request(`${url}/rest/v1/puzzles?id=in.(${list})`, {
-    method: 'DELETE',
-    headers,
-  });
-  if (!removed.ok) {
-    console.error(`could not remove stale rows: ${removed.status} ${await removed.text()}`);
-    process.exit(1);
+  // In batches: the id list goes in the URL, and a regeneration that changes how
+  // ids are derived makes *every* existing row stale at once. Two thousand ids
+  // in one query string is tens of kilobytes, which the server rejects outright
+  // — and it would have been rejected exactly when the prune mattered most.
+  const BATCH_DELETE = 200;
+  for (let start = 0; start < stale.length; start += BATCH_DELETE) {
+    const list = stale
+      .slice(start, start + BATCH_DELETE)
+      .map((id) => `"${id}"`)
+      .join(',');
+    const removed = await request(`${url}/rest/v1/puzzles?id=in.(${list})`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!removed.ok) {
+      console.error(`could not remove stale rows: ${removed.status} ${await removed.text()}`);
+      process.exit(1);
+    }
   }
   console.log(`removed ${stale.length} puzzle(s) no longer in the bank`);
+}
+
+// Give the new puzzles a starting Glicko rating. `puzzle_difficulty` reads
+// `puzzle_ratings`, so an unseeded puzzle simply has no row there and never
+// gains one — `rate_attempts` updates ratings, it does not create them. The
+// function was being called by hand, which is to say once.
+const seeded = await request(`${url}/rest/v1/rpc/seed_puzzle_ratings`, {
+  method: 'POST',
+  headers,
+  body: '{}',
+});
+if (seeded.ok) {
+  console.log(`seeded ${await seeded.text()} rating(s) from static difficulty`);
+} else {
+  // Not fatal: the bank itself is uploaded and the site reads it. But say so
+  // plainly rather than leaving it to be noticed as puzzles that never acquire a
+  // measured difficulty.
+  console.error(`\nwarning: could not seed ratings (${seeded.status} ${await seeded.text()})`);
+  console.error('New puzzles will have no Glicko rating until seed_puzzle_ratings() is run.');
 }
 
 const check = await request(`${url}/rest/v1/puzzles?select=id`, {

@@ -5,6 +5,7 @@ import { AccountButton } from './components/AccountButton';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
 import { SetSummary } from './components/SetSummary';
+import { DIFFICULTY_BANDS, type DifficultyBand } from './lib/difficulty';
 import { gradeAnswer, type GradedAnswer } from './lib/grade';
 import { openSource, type BankMeta, type PuzzleSource } from './lib/puzzleSource';
 import {
@@ -56,13 +57,6 @@ const KINDS = [
   { id: 'call', label: 'Calls', kinds: ['call'] },
 ] as const;
 
-const DIFFICULTY_BANDS = [
-  { id: 'all', label: 'All', min: 0, max: 100 },
-  { id: 'easy', label: 'Easy', min: 0, max: 40 },
-  { id: 'medium', label: 'Medium', min: 41, max: 65 },
-  { id: 'hard', label: 'Hard', min: 66, max: 100 },
-] as const;
-
 /**
  * How many puzzles a set holds.
  *
@@ -80,11 +74,19 @@ export default function App() {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<Map<string, PuzzleStats>>(new Map());
   const [linked, setLinked] = useState<Puzzle>();
+  /**
+   * A permalink that names no puzzle.
+   *
+   * Without this the session's own puzzle showed instead, so a dead link looked
+   * like a working one pointing somewhere else — which is exactly what a link
+   * shared before a regeneration used to do.
+   */
+  const [linkMissing, setLinkMissing] = useState(false);
   const [error, setError] = useState<string>();
   const [route, setRoute] = useState<Route>(() => parseHash());
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
 
-  const [band, setBand] = useState<(typeof DIFFICULTY_BANDS)[number]['id']>('all');
+  const [band, setBand] = useState<DifficultyBand['id']>('all');
   const [kindFilter, setKindFilter] = useState<(typeof KINDS)[number]['id']>('all');
   // When set, the session replays exactly these puzzles instead of sampling.
   const [drill, setDrill] = useState<string[]>();
@@ -192,12 +194,21 @@ export default function App() {
   useEffect(() => {
     if (!source || !route.puzzleId) {
       setLinked(undefined);
+      setLinkMissing(false);
       return;
     }
     let live = true;
     source.byId(route.puzzleId).then(
-      (found) => { if (live) setLinked(found); },
-      () => { if (live) setLinked(undefined); },
+      (found) => {
+        if (!live) return;
+        setLinked(found);
+        setLinkMissing(found === undefined);
+      },
+      () => {
+        if (!live) return;
+        setLinked(undefined);
+        setLinkMissing(true);
+      },
     );
     return () => { live = false; };
   }, [source, route.puzzleId]);
@@ -281,7 +292,7 @@ export default function App() {
     setSeed((previous) => previous + 1);
   }, []);
 
-  const onBandChange = useCallback((next: (typeof DIFFICULTY_BANDS)[number]['id']) => {
+  const onBandChange = useCallback((next: DifficultyBand['id']) => {
     setBand(next);
     setDrill(undefined);
     setAnswer(undefined);
@@ -413,6 +424,13 @@ export default function App() {
             {linked && (
               <p className="permalink-note">
                 Viewing a single linked puzzle. <a href="#/train">Return to the session</a>
+              </p>
+            )}
+
+            {linkMissing && (
+              <p className="permalink-note">
+                That link does not point at a puzzle in the current bank — it may have been
+                retired. <a href="#/train">Return to the session</a>
               </p>
             )}
 

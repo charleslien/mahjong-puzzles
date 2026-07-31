@@ -136,9 +136,11 @@ def build_actions(
     actions: List[Dict[str, Any]] = []
     seen = set()
     for entry in akochan_ranked:
-        if entry.get("tile") is None:
-            # Non-discard options (riichi declarations, calls, tsumo) carry an EV
-            # but no tile. Out of scope for a discard puzzle.
+        if entry.get("kind") != "dahai":
+            # Declarations, calls, kans and wins all carry an EV, and a call or a
+            # declaration now carries the discard it ends on too — so filtering on
+            # "has a tile" would let a concealed kan into a discard puzzle. The
+            # move type is the thing being asked about.
             continue
         key = entry["id"]
         if key in seen:
@@ -169,68 +171,81 @@ def build_actions(
     return actions
 
 
-CALL_LABELS = {
+CALL_VERBS = {
     "pon": "Call pon",
     "chi": "Call chi",
     "daiminkan": "Call kan",
-    "none": "Let it pass",
 }
+
+# Branches, in the order a player meets them. Used for display order and for the
+# agreement gate, which compares evaluators at branch level rather than at line
+# level — see `branch_rankings`.
+CALL_BRANCHES = ("pass", "chi", "pon", "daiminkan")
+
+
+def _tile_name(names: Dict[str, str], tile: Optional[str]) -> str:
+    if not tile:
+        return ""
+    return names.get(tile, tile)
 
 
 def build_call_actions(
     akochan_ranked: Sequence[Dict[str, Any]],
     candidate: Dict[str, Any],
 ) -> Optional[List[Dict[str, Any]]]:
-    """Turn akochan's options at an opponent's discard into call-or-pass.
+    """Every line available at an opponent's discard: pass, or call-then-discard.
 
-    akochan returns one entry per call *line* — a pon paired with each tile you
-    might discard after it — plus a single `none` for letting it go. The puzzle
-    asks whether to call at all, so each kind is reduced to its best line and the
-    follow-up discard is named in the label rather than made a separate question.
+    akochan returns one entry per line — each call paired with each tile you
+    might throw afterwards — plus a single `none` for letting it go. All of them
+    are published.
+
+    This used to collapse to one option per call *kind*, with a pre-chosen
+    follow-up discard named in the label. That threw away most of the decision:
+    whether to call is only half of it, and which set to eat it with and what to
+    throw next are the half that separates a good open hand from a wrecked one.
+    Reducing it also made the puzzle unplayable as a sequence, because there was
+    nothing left to sequence.
     """
-    passing = next((entry for entry in akochan_ranked if entry["id"] == "none"), None)
+    passing = next((entry for entry in akochan_ranked if entry["id"] == "pass"), None)
     if passing is None:
         return None
 
-    best_of_kind: Dict[str, Dict[str, Any]] = {}
-    for entry in akochan_ranked:
-        kind = entry.get("kind")
-        if kind not in ("pon", "chi", "daiminkan"):
-            continue
-        if kind not in best_of_kind or entry["ev"] > best_of_kind[kind]["ev"]:
-            best_of_kind[kind] = entry
-
-    if not best_of_kind:
-        return None
-
     names = candidate.get("tileLabels") or {}
-
-    def follow_up(entry: Dict[str, Any]) -> str:
-        tile = next(
-            (move.get("pai") for move in entry.get("moves", []) if move.get("type") == "dahai"),
-            None,
-        )
-        if not tile:
-            return ""
-        return ", then discard {}".format(names.get(tile, tile))
-
     actions: List[Dict[str, Any]] = [
         {
             "id": "pass",
-            "label": CALL_LABELS["none"],
+            "branch": "pass",
+            "label": "Let it pass",
             "tile": None,
             "ev": passing["ev"],
         }
     ]
-    for kind, entry in sorted(best_of_kind.items()):
+
+    for entry in akochan_ranked:
+        kind = entry.get("kind")
+        if kind not in CALL_VERBS:
+            continue
+        consumed = entry.get("consumed") or []
+        label = CALL_VERBS[kind]
+        if consumed:
+            label += " with {}".format(
+                " and ".join(_tile_name(names, tile) for tile in consumed)
+            )
+        if entry.get("tile"):
+            label += ", then discard {}".format(_tile_name(names, entry["tile"]))
         actions.append(
             {
-                "id": kind,
-                "label": CALL_LABELS[kind] + follow_up(entry),
+                "id": entry["id"],
+                "branch": kind,
+                "label": label,
                 "tile": entry.get("tile"),
+                "consumed": list(consumed),
                 "ev": entry["ev"],
             }
         )
+
+    if len(actions) < 2:
+        return None
     return actions
 
 
@@ -238,59 +253,95 @@ def build_riichi_actions(
     akochan_ranked: Sequence[Dict[str, Any]],
     candidate: Dict[str, Any],
 ) -> Optional[List[Dict[str, Any]]]:
-    """Turn akochan's option list into a riichi-or-damaten pair, or None.
+    """Every line available where a declaration is possible, or None.
 
     Returns None when the position offers no declaration — the overwhelming
     majority, since riichi needs a closed tenpai hand, a 1000-point stick and
     live wall.
 
-    The comparison is between the best line of each sort, not between two ways of
-    playing the same tile: staying concealed may well want a different discard
-    than declaring would, and forcing them onto the same tile would be a
-    different, easier question than the one players actually face.
+    Both branches are published in full, because the declaration and the discard
+    are one decision and the legal sets differ: declaring restricts you to tiles
+    that keep tenpai, so a hand may offer five ways to riichi and twelve ways to
+    play on. That narrowing is the most useful thing about the position and it
+    was exactly what the old riichi-or-damaten pair hid.
     """
-    reach = next((entry for entry in akochan_ranked if entry.get("kind") == "reach"), None)
-    if reach is None:
+    reach_lines = [entry for entry in akochan_ranked if entry.get("kind") == "reach"]
+    if not reach_lines:
         return None
-
-    dama = next((entry for entry in akochan_ranked if entry["id"].startswith("discard:")), None)
-    if dama is None:
+    dama_lines = [entry for entry in akochan_ranked if entry.get("kind") == "dahai"]
+    if not dama_lines:
         return None
 
     annotations = candidate.get("ukeireActions") or {}
-    reach_tile = reach.get("tile")
-    reach_annotation = annotations.get("discard:{}".format(reach_tile), {})
-    dama_annotation = annotations.get(dama["id"], {})
 
-    def label(prefix: str, tile: Optional[str], annotation: Dict[str, Any]) -> str:
-        name = annotation.get("label", "").replace("Discard ", "")
-        return "{}, discarding {}".format(prefix, name or tile)
+    def annotation(tile: Optional[str]) -> Dict[str, Any]:
+        return annotations.get("discard:{}".format(tile), {})
 
-    # The best concealed line does not always keep the hand together: akochan
-    # sometimes prefers giving up tenpai to declaring. Calling that "stay
-    # concealed" would describe a fold as a quiet wait, so the label follows what
-    # the tile actually does.
-    dama_shanten = dama_annotation.get("shantenAfter")
-    dama_prefix = "Back off" if dama_shanten not in (None, 0) else "Stay concealed"
+    def name(tile: Optional[str], from_annotation: Dict[str, Any]) -> str:
+        return from_annotation.get("label", "").replace("Discard ", "") or str(tile)
 
-    return [
-        {
-            "id": "riichi",
-            "label": label("Declare riichi", reach_tile, reach_annotation),
-            "tile": reach_tile,
-            "ev": reach["ev"],
-            "shantenAfter": reach_annotation.get("shantenAfter"),
-            "ukeire": reach_annotation.get("ukeire"),
-        },
-        {
-            "id": "damaten",
-            "label": label(dama_prefix, dama.get("tile"), dama_annotation),
-            "tile": dama.get("tile"),
-            "ev": dama["ev"],
-            "shantenAfter": dama_shanten,
-            "ukeire": dama_annotation.get("ukeire"),
-        },
+    actions: List[Dict[str, Any]] = []
+    for entry in reach_lines:
+        tile = entry.get("tile")
+        note = annotation(tile)
+        actions.append(
+            {
+                "id": entry["id"],
+                "branch": "riichi",
+                "label": "Declare riichi, discarding {}".format(name(tile, note)),
+                "tile": tile,
+                "ev": entry["ev"],
+                "shantenAfter": note.get("shantenAfter"),
+                "ukeire": note.get("ukeire"),
+            }
+        )
+    for entry in dama_lines:
+        tile = entry.get("tile")
+        note = annotation(tile)
+        actions.append(
+            {
+                "id": entry["id"],
+                "branch": "dama",
+                # Not "stay concealed": akochan sometimes prefers giving up tenpai
+                # to declaring, and calling a fold a quiet wait would misdescribe
+                # it. The shanten column says which one this line is.
+                "label": "Discard {}".format(name(tile, note)),
+                "tile": tile,
+                "ev": entry["ev"],
+                "shantenAfter": note.get("shantenAfter"),
+                "ukeire": note.get("ukeire"),
+            }
+        )
+    return actions
+
+
+def branch_rankings(
+    actions: Sequence[Dict[str, Any]],
+    human_branch: str,
+    order: Sequence[str],
+) -> List[List[str]]:
+    """Evaluator preference orders over *branches*, for the agreement gate.
+
+    The second evaluator on a call or riichi puzzle is the houou player who was
+    actually there, and all they expressed is which branch they took — they left
+    no opinion on which of five riichi discards was best. Comparing at line level
+    would therefore manufacture disagreement about something one evaluator never
+    ranked, and drop good positions for it.
+
+    akochan's branch order is by its best line in each branch, which is the only
+    sense in which a branch has a value.
+    """
+    best_ev: Dict[str, float] = {}
+    for action in actions:
+        branch = action["branch"]
+        if branch not in best_ev or action["ev"] > best_ev[branch]:
+            best_ev[branch] = action["ev"]
+
+    akochan_order = sorted(best_ev, key=lambda branch: -best_ev[branch])
+    human_order = [human_branch] + [
+        branch for branch in order if branch in best_ev and branch != human_branch
     ]
+    return [akochan_order, human_order]
 
 
 def model_ranking(candidate: Dict[str, Any], actions: Sequence[Dict[str, Any]]) -> List[str]:
@@ -343,46 +394,21 @@ def verify_candidate(
         raise Rejection("akochan_returned_nothing")
 
     if candidate.get("kind") == "call":
-        call_actions = build_call_actions(ranked, candidate)
-        if call_actions is None:
+        actions = build_call_actions(ranked, candidate)
+        if actions is None:
             raise Rejection("akochan_offered_no_call")
-        kind = "call"
-        actions = call_actions
         # Neither the network nor tile efficiency has a view on whether to call,
         # so the second opinion is again the houou player's own choice.
         took = str(candidate.get("actionTaken") or "pass")
-        best_call = max(
-            (a for a in actions if a["id"] != "pass"), key=lambda a: a["ev"], default=None
+        rankings = branch_rankings(
+            actions,
+            took if took in CALL_BRANCHES else "pass",
+            CALL_BRANCHES,
         )
-        human_first = "pass" if took == "pass" else took
-        order = [human_first] + [a["id"] for a in actions if a["id"] != human_first]
-        rankings = [
-            [a["id"] for a in sorted(actions, key=lambda a: -a["ev"])],
-            order,
-        ]
+        kind = "call"
         evaluators = ["akochan", "houou-player"]
-        if best_call is None:
-            raise Rejection("no_choice")
-        enriched = dict(candidate)
-        enriched["kind"] = kind
-        enriched["actions"] = actions
-        enriched["rankings"] = rankings
-        enriched["evaluators"] = evaluators
-        enriched["epsilon"] = epsilon
-        enriched["history"] = _kyoku_history(history)
-        enriched["akochanBest"] = max(actions, key=lambda a: a["ev"])["id"]
-        screened = screen_candidate(
-            enriched, epsilon=epsilon, min_margin=min_margin, max_accepted=max_accepted
-        )
-        screened["agreement"] = True
-        screened["tags"] = tags_for(screened, actions, float(screened["margin"]))
-        return screened
-
-    riichi_actions = build_riichi_actions(ranked, candidate)
-    if riichi_actions is not None:
-        # A declaration is available, so ask the more interesting question. The
-        # tile choice is subsumed: each option already names the discard its own
-        # line wants.
+    elif (riichi_actions := build_riichi_actions(ranked, candidate)) is not None:
+        # A declaration is available, so ask the more interesting question.
         kind = "riichi"
         actions = riichi_actions
         # The imitation network ranks discards only and has no view on
@@ -391,10 +417,9 @@ def verify_candidate(
         # a panel, and labelled as such — but genuinely independent of a search,
         # which is what the agreement gate is for.
         declared = bool(candidate.get("declaredRiichi"))
-        rankings = [
-            [action["id"] for action in sorted(actions, key=lambda a: -a["ev"])],
-            ["riichi", "damaten"] if declared else ["damaten", "riichi"],
-        ]
+        rankings = branch_rankings(
+            actions, "riichi" if declared else "dama", ("riichi", "dama")
+        )
         evaluators = ["akochan", "houou-player"]
     else:
         kind = candidate.get("kind", "discard")
@@ -444,6 +469,14 @@ def tags_for(
     Every one is read off the position or the evaluation. `efficiency-trap` is
     added by export.py from `naiveFails`, since that is where the flag is
     resolved.
+
+    **Nothing here may depend on what the answer is.** These chips are rendered
+    above the board while the question is still open. This used to tag riichi
+    puzzles `declared` / `stayed-concealed` and call puzzles `called` /
+    `let-it-pass` after what the houou player did — and since the agreement gate
+    only publishes positions where akochan and that player chose the same branch,
+    the chip *was* the answer. Measured on the shipped bank it predicted the
+    correct branch in 169 of 169 riichi puzzles and 544 of 544 call puzzles.
     """
     position = candidate.get("position") or {}
     seat = int(position.get("seat", 0))
@@ -451,12 +484,10 @@ def tags_for(
     kind = candidate.get("kind", "discard")
     tags = [kind]
 
-    if kind == "call":
-        tags.append("called" if candidate.get("actionTaken") != "pass" else "let-it-pass")
-    elif kind == "riichi":
+    if kind in ("call", "riichi"):
         # Every riichi position is tenpai by definition, so "tenpai-choice" adds
-        # nothing; whether the declaration was actually made is the useful axis.
-        tags.append("declared" if candidate.get("declaredRiichi") else "stayed-concealed")
+        # nothing either; the kind already says what is being asked.
+        pass
     elif best_shanten == 0:
         tags.append("tenpai-choice")
     elif candidate.get("currentShanten") == 2:
@@ -579,6 +610,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                 {
                                     "gameId": candidate.get("gameId"),
                                     "decisionIndex": candidate.get("decisionIndex"),
+                                    # The mined kind, not the verified one — a
+                                    # rejected candidate never reached the point
+                                    # of being reclassified as a riichi puzzle —
+                                    # but enough to see which decisions the
+                                    # thresholds are actually filtering out.
+                                    "kind": candidate.get("kind"),
+                                    "declaredRiichi": bool(candidate.get("declaredRiichi")),
                                     "reason": exc.reason,
                                 },
                                 separators=(",", ":"),

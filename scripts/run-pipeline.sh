@@ -50,21 +50,21 @@ fi
 
 mkdir -p "$WORK"
 
-echo "==> 1/5 extract ($GAMES games from offset $SKIP)"
+echo "==> 1/6 extract ($GAMES games from offset $SKIP)"
 "$PYTHON" -m pipeline.extract \
   --input "$LOGS" --output "$WORK/decisions.jsonl.gz" \
   --skip "$SKIP" --limit "$GAMES" --skip-errors
 
-echo "==> 2/5 mine (every ${STRIDE}th decision)"
+echo "==> 2/6 mine (every ${STRIDE}th decision)"
 "$PYTHON" -m pipeline.mine \
   --input "$WORK/decisions.jsonl.gz" --output "$WORK/candidates.jsonl" \
   --checkpoint "$CHECKPOINT" --stride "$STRIDE"
 
-echo "==> 3/5 annotate with the ukeire baseline"
+echo "==> 3/6 annotate with the ukeire baseline"
 npm run --silent annotate:ukeire -- \
   --input "$WORK/candidates.jsonl" --output "$WORK/annotated.jsonl"
 
-echo "==> 4/5 verify with akochan"
+echo "==> 4/6 verify with akochan"
 "$PYTHON" -m pipeline.verify \
   --input "$WORK/annotated.jsonl" --output "$WORK/verified.jsonl" \
   --logs "$LOGS" --akochan "$AKOCHAN" \

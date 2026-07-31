@@ -219,6 +219,15 @@ class ExtractTest(unittest.TestCase):
             self.assertEqual(call["position"]["seat"], call["actor"])
             self.assertEqual(len(call["position"]["hand"]), 13)
             self.assertIn(call["actionTaken"], ("pass", "pon", "chi", "daiminkan"))
+            # The position is observed before the discard is applied, so the tile
+            # on offer is in nobody's river. Without these the puzzle cannot say
+            # what it is a call on.
+            self.assertEqual(call["position"]["calledTile"], call["calledTile"])
+            self.assertNotEqual(call["position"]["calledFrom"], call["actor"])
+            self.assertNotIn(
+                call["calledTile"],
+                call["position"]["rivers"][call["position"]["calledFrom"]],
+            )
 
     def test_a_seat_in_riichi_is_not_offered_calls(self):
         log = build_log()
