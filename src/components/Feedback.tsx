@@ -5,6 +5,7 @@ import { GRADE_LABELS, formatLoss, gradeForLoss, type GradedAnswer } from '../li
 import type { PuzzleStats } from '../lib/supabase';
 import { tileToIndex, type Tile } from '../lib/tiles';
 import type { Puzzle } from '../types/puzzle';
+import { ActionLabel, stripTileName } from './ActionLabel';
 import { TileView } from './TileView';
 
 /**
@@ -59,11 +60,13 @@ function OptionRow({
   action,
   chosen,
   acceptance,
+  showLabels,
 }: {
   puzzle: Puzzle;
   action: Puzzle['actions'][number];
   chosen: boolean;
   acceptance?: Acceptance;
+  showLabels: boolean;
 }) {
   const unit = puzzle.evaluation.unit;
   const grade = gradeForLoss(action.loss, action.accepted, unit);
@@ -84,7 +87,7 @@ function OptionRow({
       </span>
 
       <span className="opt__label">
-        {action.label}
+        {showLabels && <ActionLabel action={action} showTile={false} />}
         {chosen && <span className="opt__you">yours</span>}
       </span>
 
@@ -144,6 +147,11 @@ export function Feedback({
   // descending value.
   const ranked = [...puzzle.actions].sort((a, b) => a.loss - b.loss);
   const acceptance = useAcceptance(puzzle);
+  // On a discard puzzle every row reduces to the same word, and the tile beside
+  // it already says which play it is. Nothing is gained by printing "Discard"
+  // twelve times, so the column collapses when it carries no information.
+  const labels = new Set(ranked.map((action) => stripTileName(action.label)));
+  const showLabels = labels.size > 1;
   const showShanten = ranked.some((action) => action.shantenAfter !== undefined);
   const showUkeire = ranked.some((action) => typeof action.ukeire === 'number');
 
@@ -175,6 +183,7 @@ export function Feedback({
         <ul
           className={[
             'optionlist',
+            showLabels ? '' : 'optionlist--terse',
             showShanten ? '' : 'optionlist--no-shanten',
             showUkeire ? '' : 'optionlist--no-ukeire',
           ]
@@ -183,7 +192,7 @@ export function Feedback({
         >
           <li className="opt opt--header" aria-hidden="true">
             <span className="opt__tile" />
-            <span className="opt__label">Option</span>
+            <span className="opt__label">{showLabels ? 'Option' : 'Tile'}</span>
             <span className="opt__grade" />
             <span className="opt__ev">points</span>
             <span className="opt__delta">vs best</span>
@@ -196,6 +205,7 @@ export function Feedback({
               puzzle={puzzle}
               action={action}
               chosen={action.id === answer.action.id}
+              showLabels={showLabels}
               acceptance={
                 action.tile ? acceptance.get(String(tileToIndex(action.tile))) : undefined
               }

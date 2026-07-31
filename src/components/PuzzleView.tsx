@@ -5,6 +5,7 @@ import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay'
 import type { Tile } from '../lib/tiles';
 import type { PuzzleStats } from '../lib/supabase';
 import type { Puzzle } from '../types/puzzle';
+import { ActionLabel } from './ActionLabel';
 import { Feedback } from './Feedback';
 import { GameBoard } from './GameBoard';
 
@@ -212,7 +213,7 @@ export function PuzzleView({
               disabled={!atDecision}
             >
               <kbd className="choice__key">{index + 1}</kbd>
-              {action.label}
+              <ActionLabel action={action} />
             </button>
           ))}
         </div>

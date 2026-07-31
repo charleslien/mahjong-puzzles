@@ -5,6 +5,7 @@ import { fetchMyRating, type PlayerRating } from '../lib/supabase';
 import { summarize, type Progress } from '../lib/progress';
 import type { PuzzleSource } from '../lib/puzzleSource';
 import type { Puzzle } from '../types/puzzle';
+import { ActionLabel } from './ActionLabel';
 
 const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
@@ -154,10 +155,14 @@ export function ProgressPanel({
                     {GRADE_LABELS[attempt.grade]}
                   </span>
                   <span className="history__what">
-                    {puzzle
-                      ? puzzle.actions.find((action) => action.id === attempt.actionId)?.label ??
+                    {(() => {
+                      const played = puzzle?.actions.find((a) => a.id === attempt.actionId);
+                      return played ? (
+                        <ActionLabel action={played} size="xs" />
+                      ) : (
                         attempt.actionId
-                      : attempt.actionId}
+                      );
+                    })()}
                   </span>
                   {puzzle && <span className="history__kind">{puzzle.kind}</span>}
                   <span className="history__when">{when(attempt.at)}</span>

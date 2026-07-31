@@ -1,4 +1,5 @@
 import { GRADE_LABELS, type Grade, type GradedAnswer } from '../lib/grade';
+import { ActionLabel } from './ActionLabel';
 
 const ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
@@ -55,7 +56,9 @@ export function SetSummary({
           <div className="stat">
             <span className="stat__value">−{worst.action.loss.toFixed(1)}</span>
             <span className="stat__label">worst miss</span>
-            <span className="stat__hint">{worst.action.label}</span>
+            <span className="stat__hint">
+              <ActionLabel action={worst.action} size="xs" />
+            </span>
           </div>
         )}
       </div>

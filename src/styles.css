@@ -1622,3 +1622,18 @@ kbd {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* An action described with its tile rather than the tile's name. */
+.actionlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* When every option reduces to the same word, the label column carries nothing
+   and the tile beside it says which play the row is. */
+.optionlist--terse .opt {
+  grid-template-columns:
+    calc(24px * var(--tile-scale)) minmax(0, 1fr) 5.6rem 4.6rem 4.4rem 5.4rem 3.2rem;
+}
