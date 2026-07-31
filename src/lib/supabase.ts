@@ -264,9 +264,9 @@ export interface RecordedAttempt {
  * signed-in user can lie exactly as easily as an anonymous one — so the check
  * lives server-side.
  */
-export async function recordAttempt(attempt: RecordedAttempt): Promise<void> {
+export async function recordAttempt(attempt: RecordedAttempt): Promise<boolean> {
   const session = await currentSession();
-  if (!session) return;
+  if (!session) return false;
   const db = await supabase();
   const { error } = await db.from('attempts').insert({
     user_id: session.user.id,
@@ -275,6 +275,7 @@ export async function recordAttempt(attempt: RecordedAttempt): Promise<void> {
     elapsed_ms: attempt.elapsedMs ?? null,
   });
   if (error) throw new Error(`attempts: ${error.message}`);
+  return true;
 }
 
 export interface RemoteProgress {
@@ -355,4 +356,38 @@ export async function fetchMyRating(): Promise<PlayerRating | null> {
   if (!data) return null;
   const row = data as Record<string, unknown>;
   return { rating: Number(row.rating), rd: Number(row.rd), games: Number(row.games) };
+}
+
+/**
+ * Send attempts answered while signed out.
+ *
+ * Correctness is still derived server-side, so nothing about the grade travels;
+ * these are just "this person answered this puzzle this way". Returns the
+ * timestamps that were accepted, so the caller can mark them and not send them
+ * again.
+ */
+export async function backfillAttempts(
+  attempts: Array<{ puzzleId: string; actionId: string; at: number }>,
+): Promise<number[]> {
+  if (!attempts.length) return [];
+  const session = await currentSession();
+  if (!session) return [];
+  const db = await supabase();
+
+  const accepted: number[] = [];
+  // In chunks, because one malformed row fails a whole insert and a solver with
+  // a long offline history should not lose all of it to one bad record.
+  const CHUNK = 50;
+  for (let start = 0; start < attempts.length; start += CHUNK) {
+    const slice = attempts.slice(start, start + CHUNK);
+    const { error } = await db.from('attempts').insert(
+      slice.map((attempt) => ({
+        user_id: session.user.id,
+        puzzle_id: attempt.puzzleId,
+        action_id: attempt.actionId,
+      })),
+    );
+    if (!error) accepted.push(...slice.map((attempt) => attempt.at));
+  }
+  return accepted;
 }

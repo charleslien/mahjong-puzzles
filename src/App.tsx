@@ -10,13 +10,20 @@ import {
   clearProgress,
   loadProgress,
   attemptedIds,
+  markSynced,
   recordAttempt,
   saveProgress,
+  unsyncedAttempts,
   type Progress,
 } from './lib/progress';
+import { useSession } from './lib/useSession';
 // Aliased: `recordAttempt` above writes to localStorage, this one to the
 // database. They are not alternatives — both run for a signed-in solver.
-import { recordAttempt as recordRemoteAttempt, type PuzzleStats } from './lib/supabase';
+import {
+  backfillAttempts,
+  recordAttempt as recordRemoteAttempt,
+  type PuzzleStats,
+} from './lib/supabase';
 import type { Puzzle } from './types/puzzle';
 
 type View = 'train' | 'progress' | 'about';
@@ -78,6 +85,30 @@ export default function App() {
       (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
     );
   }, []);
+
+  // Anything answered before signing in follows the solver to the server, once,
+  // when a session appears. Without this, a history built up while signed out is
+  // stranded in one browser and counts toward nothing.
+  const { session: authSession } = useSession();
+  useEffect(() => {
+    if (!authSession) return;
+    const pending = unsyncedAttempts(progress);
+    if (!pending.length) return;
+    let live = true;
+    backfillAttempts(pending.map((a) => ({ puzzleId: a.puzzleId, actionId: a.actionId, at: a.at })))
+      .then((accepted) => {
+        if (!live || !accepted.length) return;
+        setProgress((previous) => {
+          const next = markSynced(previous, new Set(accepted));
+          saveProgress(next);
+          return next;
+        });
+      })
+      .catch((cause) => console.warn('[attempts] back-fill failed:', cause));
+    return () => { live = false; };
+    // Runs on sign-in, not on every answer: `progress` is read but not tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(parseHash());
@@ -155,9 +186,17 @@ export default function App() {
       // the session, so a network failure here must not delay the feedback panel
       // or lose the local record. The server recomputes correctness itself, so
       // nothing about the grade is trusted from here.
-      void recordRemoteAttempt({ puzzleId: current.id, actionId }).catch((cause) => {
-        console.warn('[attempts] not recorded remotely:', cause);
-      });
+      const at = Date.now();
+      void recordRemoteAttempt({ puzzleId: current.id, actionId })
+        .then((recorded) => {
+          if (!recorded) return;
+          setProgress((previous) => {
+            const next = markSynced(previous, new Set([at]));
+            saveProgress(next);
+            return next;
+          });
+        })
+        .catch((cause) => console.warn('[attempts] not recorded remotely:', cause));
 
       setProgress((previous) => {
         const next = recordAttempt(
@@ -169,7 +208,7 @@ export default function App() {
             score: graded.score,
             loss: graded.action.loss,
             policy: graded.action.policy,
-            at: Date.now(),
+            at,
           },
           graded.correct,
         );

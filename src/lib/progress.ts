@@ -19,6 +19,15 @@ export interface AttemptRecord {
   loss: number;
   policy?: number;
   at: number;
+  /**
+   * When this attempt reached the server, if it ever did.
+   *
+   * Absent for anything answered while signed out, which is what the back-fill
+   * on sign-in looks for. Duplicates are tolerable if a mark is lost — only a
+   * solver's first attempt at a puzzle counts toward ratings — so this errs
+   * toward sending again rather than risking silent loss.
+   */
+  syncedAt?: number;
 }
 
 export interface Progress {
@@ -63,6 +72,22 @@ export function recordAttempt(progress: Progress, attempt: AttemptRecord, correc
     attempts: [...progress.attempts, attempt].slice(-2000),
     currentStreak,
     bestStreak: Math.max(progress.bestStreak, currentStreak),
+  };
+}
+
+/** Attempts that never reached the server. */
+export function unsyncedAttempts(progress: Progress): AttemptRecord[] {
+  return progress.attempts.filter((attempt) => attempt.syncedAt === undefined);
+}
+
+/** Mark attempts as delivered, matched on the timestamp that identifies them. */
+export function markSynced(progress: Progress, times: Set<number>): Progress {
+  if (times.size === 0) return progress;
+  return {
+    ...progress,
+    attempts: progress.attempts.map((attempt) =>
+      times.has(attempt.at) ? { ...attempt, syncedAt: Date.now() } : attempt,
+    ),
   };
 }
 
