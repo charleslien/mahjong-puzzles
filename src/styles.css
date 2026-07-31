@@ -1071,8 +1071,8 @@ kbd {
     calc(24px * var(--tile-scale))   /* tile      */
     minmax(0, 1fr)                   /* label     */
     5.6rem                           /* grade     */
+    4.6rem                           /* vs best   */
     4.6rem                           /* points    */
-    4.4rem                           /* vs best   */
     5.4rem                           /* shanten   */
     3.2rem;                          /* draws     */
   align-items: center;
@@ -1160,13 +1160,14 @@ kbd {
   font-family: inherit;
 }
 
-/* The value is the answer; it reads as body text rather than as an aside. */
-.opt__ev {
+/* The comparison is the figure that means the same thing in every hand, so it
+   carries the emphasis; the raw expected value stays muted context. */
+.opt__delta {
   color: var(--text);
   font-weight: 600;
 }
 
-.opt--best .opt__ev {
+.opt--best .opt__delta {
   color: var(--grade-optimal);
   font-weight: 700;
 }

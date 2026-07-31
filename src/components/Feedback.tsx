@@ -102,17 +102,18 @@ function OptionRow({
 
       <span className={`opt__grade opt__grade--${grade}`}>{GRADE_LABELS[grade]}</span>
 
-      {/* The expected value itself, on every row including the best one — the
-          number is the point of the exercise, and hiding it behind the word
-          "best" made the top line the only one you could not read. */}
-      <span className="opt__ev">{action.ev >= 0 ? `+${action.ev.toFixed(2)}` : action.ev.toFixed(2)}</span>
-
-      {/* A gap smaller than the displayed precision is reported as such rather
-          than rounded to "−0.00", which reads as a signed zero and tells you
-          neither that there is a gap nor that it does not matter. */}
+      {/* The gap to the best play leads, because it is the figure that means the
+          same thing in every hand. A raw expected value swings with the score
+          situation — "-10" is excellent in one position and dire in another —
+          so it reads as context beside the comparison, not as the headline.
+          A gap smaller than the displayed precision says so rather than
+          rounding to "-0.00", which is a signed zero and tells you neither that
+          there is a gap nor that it does not matter. */}
       <span className="opt__delta">
         {action.loss <= 0 ? '—' : action.loss < 0.005 ? '−<0.01' : `−${action.loss.toFixed(2)}`}
       </span>
+
+      <span className="opt__ev">{action.ev >= 0 ? `+${action.ev.toFixed(2)}` : action.ev.toFixed(2)}</span>
 
       <span className="opt__shanten">{shantenLabel(action.shantenAfter)}</span>
 
@@ -203,8 +204,8 @@ export function Feedback({
             <span className="opt__tile" />
             <span className="opt__label">{showLabels ? 'Option' : 'Tile'}</span>
             <span className="opt__grade" />
-            <span className="opt__ev">points</span>
             <span className="opt__delta">vs best</span>
+            <span className="opt__ev">points</span>
             <span className="opt__shanten">{showShanten ? 'after' : ''}</span>
             <span className="opt__ukeire">{showUkeire ? 'draws' : ''}</span>
           </li>

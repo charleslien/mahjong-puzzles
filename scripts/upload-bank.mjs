@@ -55,6 +55,33 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
+/**
+ * fetch with a few retries.
+ *
+ * Uploading a few thousand rows means dozens of requests, and one dropped socket
+ * partway through used to abandon the whole run — leaving the table half updated
+ * with no indication which half. Transport failures and 5xx are retried; a 4xx is
+ * a real rejection and is returned as-is.
+ */
+async function request(url, options, attempts = 4) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status < 500) return response;
+      lastError = new Error(`${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts) {
+      const wait = 500 * 2 ** (attempt - 1);
+      process.stdout.write(`\n  retrying in ${wait}ms (${lastError.message ?? lastError})\n`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  throw lastError;
+}
+
 /** Site schema (camelCase) -> table columns (snake_case). */
 function toRow(puzzle) {
   return {
@@ -104,7 +131,7 @@ if (dryRun) {
 let done = 0;
 for (let start = 0; start < puzzles.length; start += BATCH) {
   const rows = puzzles.slice(start, start + BATCH).map(toRow);
-  const response = await fetch(`${url}/rest/v1/puzzles`, {
+  const response = await request(`${url}/rest/v1/puzzles`, {
     method: 'POST',
     headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(rows),
@@ -118,7 +145,7 @@ for (let start = 0; start < puzzles.length; start += BATCH) {
 }
 process.stdout.write('\n');
 
-const meta = await fetch(`${url}/rest/v1/bank_meta`, {
+const meta = await request(`${url}/rest/v1/bank_meta`, {
   method: 'POST',
   headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
   body: JSON.stringify([
@@ -140,15 +167,28 @@ if (!meta.ok) {
 // them behind, and because the site reads the database rather than the JSON,
 // stale puzzles would keep being served long after they stopped existing in the
 // source — visible only as a puzzle that cannot be found on disk.
-const existing = await fetch(`${url}/rest/v1/puzzles?select=id`, { headers });
-if (!existing.ok) {
-  console.error(`could not list existing rows: ${existing.status}`);
-  process.exit(1);
+//
+// Paged, because PostgREST caps a response at its own row limit: a single
+// `?select=id` returned the first 1000 ids and the prune then believed
+// everything past them was still current. The count check at the end is what
+// caught it.
+const existingIds = [];
+for (let offset = 0; ; offset += 1000) {
+  const page = await request(`${url}/rest/v1/puzzles?select=id&order=id`, {
+    headers: { ...headers, Range: `${offset}-${offset + 999}` },
+  });
+  if (!page.ok) {
+    console.error(`could not list existing rows: ${page.status}`);
+    process.exit(1);
+  }
+  const rows = await page.json();
+  existingIds.push(...rows.map((row) => row.id));
+  if (rows.length < 1000) break;
 }
-const stale = (await existing.json()).map((row) => row.id).filter((id) => !ids.has(id));
+const stale = existingIds.filter((id) => !ids.has(id));
 if (stale.length) {
   const list = stale.map((id) => `"${id}"`).join(',');
-  const removed = await fetch(`${url}/rest/v1/puzzles?id=in.(${list})`, {
+  const removed = await request(`${url}/rest/v1/puzzles?id=in.(${list})`, {
     method: 'DELETE',
     headers,
   });
@@ -159,7 +199,7 @@ if (stale.length) {
   console.log(`removed ${stale.length} puzzle(s) no longer in the bank`);
 }
 
-const check = await fetch(`${url}/rest/v1/puzzles?select=id`, {
+const check = await request(`${url}/rest/v1/puzzles?select=id`, {
   headers: { ...headers, Prefer: 'count=exact', Range: '0-0' },
 });
 const total = check.headers.get('content-range')?.split('/')[1] ?? '?';
