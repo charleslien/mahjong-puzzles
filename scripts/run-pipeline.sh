@@ -16,6 +16,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Credentials for the upload step. Sourcing this is what makes step 6 run at
+# all: without it the script checked an environment variable it had never loaded
+# and silently skipped the upload, leaving the site on the previous bank.
+if [ -f .env.local ]; then
+  set -a; . ./.env.local; set +a
+fi
+
 GAMES="${1:-1200}"
 STRIDE="${2:-200}"
 

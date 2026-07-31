@@ -38,6 +38,11 @@ class UnsupportedLog(Exception):
     """Raised when a log cannot be replayed faithfully."""
 
 
+def _plain(tile: str) -> str:
+    """A tile with its red-five marking removed, for matching by identity."""
+    return tile[:2] if len(tile) == 3 and tile.endswith("r") else tile
+
+
 def normalize_tile(tile: str) -> str:
     """Map Tenhou-style spellings onto canonical mjai notation."""
     if tile in HONORS or tile == "?":
@@ -196,6 +201,43 @@ class GameState:
 
     # -- observation -------------------------------------------------------
 
+    def call_options(self, seat: int, discarder: int, tile: str) -> List[str]:
+        """Which calls `seat` could legally make on `tile`, ignoring whether it
+        would be wise.
+
+        Only what the rules allow: two matching tiles for a pon, three for a
+        daiminkan, and a sequence for a chi — which only the player to the
+        discarder's immediate right may take. A seat already in riichi cannot
+        call at all, since calling would change the hand it is locked into.
+        """
+        if seat == discarder or not self.hand_is_known(seat) or self.riichi[seat]:
+            return []
+
+        plain = _plain(tile)
+        matches = sum(1 for held in self.hands[seat] if _plain(held) == plain)
+
+        options: List[str] = []
+        if matches >= 2:
+            options.append("pon")
+        if matches >= 3:
+            options.append("daiminkan")
+
+        # Chi comes only from the seat to the discarder's left in turn order, and
+        # only in a numbered suit.
+        if seat == (discarder + 1) % self.num_players and len(plain) == 2 and plain[1] in "mps":
+            rank, suit = int(plain[0]), plain[1]
+            held = {_plain(held) for held in self.hands[seat]}
+            for low in (rank - 2, rank - 1, rank):
+                run = [low, low + 1, low + 2]
+                if not all(1 <= value <= 9 for value in run):
+                    continue
+                needed = [f"{value}{suit}" for value in run if value != rank]
+                if all(need in held for need in needed):
+                    options.append("chi")
+                    break
+
+        return options
+
     def hand_is_known(self, seat: int) -> bool:
         return "?" not in self.hands[seat]
 
@@ -268,6 +310,22 @@ def iter_events(path: str) -> Iterator[Dict[str, Any]]:
                 raise UnsupportedLog("{}:{}: {}".format(path, line_number, exc))
 
 
+def _call_taken(events: Sequence[Dict[str, Any]], dahai_index: int, seat: int) -> Optional[str]:
+    """What `seat` actually did with the discard at `dahai_index`.
+
+    Returns the call they made, or None if they let it pass. Only the events
+    immediately following count: once anybody draws or discards, the chance is
+    gone.
+    """
+    for event in events[dahai_index + 1 : dahai_index + 5]:
+        kind = event.get("type")
+        if kind in ("pon", "chi", "daiminkan") and int(event.get("actor", -1)) == seat:
+            return kind
+        if kind in ("tsumo", "dahai", "hora", "ryukyoku", "end_kyoku"):
+            return None
+    return None
+
+
 def extract_from_events(
     events: Iterable[Dict[str, Any]],
     game_id: str,
@@ -282,7 +340,8 @@ def extract_from_events(
     decision_index = 0
     final_scores: Optional[List[int]] = None
 
-    for event_index, event in enumerate(events):
+    events_list = list(events)
+    for event_index, event in enumerate(events_list):
         kind = event.get("type")
 
         if kind == "start_kyoku":
@@ -327,6 +386,35 @@ def extract_from_events(
                     }
                 )
                 decision_index += 1
+            # A discard is also a decision for everyone else: call it, or let it
+            # pass. Declining leaves no trace in the log, so these have to be
+            # recovered by checking the rules against each seat's hand — which is
+            # why the `call` kind was empty until now.
+            for other in range(state.num_players):
+                options = state.call_options(other, actor, normalize_tile(event["pai"]))
+                if not options:
+                    continue
+                taken = _call_taken(events_list, event_index, other)
+                pending.append(
+                    {
+                        "gameId": game_id,
+                        "decisionIndex": decision_index,
+                        # A prefix *including* this discard: the discard is what
+                        # creates the decision, unlike a player's own dahai,
+                        # which the prefix must stop before.
+                        "eventIndex": event_index + 1,
+                        "kind": "call",
+                        "actor": other,
+                        "position": state.observe(other),
+                        "actionTaken": taken or "pass",
+                        "calledTile": normalize_tile(event["pai"]),
+                        "callOptions": options,
+                        "declaredRiichi": False,
+                        "tsumogiri": False,
+                    }
+                )
+                decision_index += 1
+
             state.dahai(event)
             continue
 

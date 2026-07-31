@@ -68,7 +68,10 @@ class NormalizeTileTest(unittest.TestCase):
 
 class ExtractTest(unittest.TestCase):
     def setUp(self):
-        self.records = extract_from_events(build_log(), game_id="test")
+        self.all_records = extract_from_events(build_log(), game_id="test")
+        # Discards only. Call opportunities are now recorded too and interleave
+        # with them, so positional indexing has to say which kind it means.
+        self.records = [r for r in self.all_records if r["kind"] == "discard"]
 
     def test_records_every_discard(self):
         self.assertEqual(len(self.records), 3)
@@ -134,7 +137,7 @@ class ExtractTest(unittest.TestCase):
         those tiles, because the site counts visible tiles across all four meld
         slots.
         """
-        for record in self.records:
+        for record in self.all_records:
             position = record["position"]
             seat = position["seat"]
             self.assertEqual(
@@ -178,7 +181,11 @@ class ExtractTest(unittest.TestCase):
         log = build_log()
         insert_at = log.index({"type": "tsumo", "actor": 1, "pai": "E"})
         log.insert(insert_at, {"type": "reach", "actor": 1})
-        records = extract_from_events(log, game_id="test")
+        records = [
+            record
+            for record in extract_from_events(log, game_id="test")
+            if record["kind"] == "discard"
+        ]
 
         self.assertEqual(
             [record["actionTaken"] for record in records],
@@ -189,6 +196,43 @@ class ExtractTest(unittest.TestCase):
         # The board must not show a riichi the player has not committed to yet,
         # or the puzzle asks whether to declare while displaying the stick.
         self.assertEqual(declaring["position"]["riichi"][1], False)
+
+    def test_call_opportunities_are_recorded(self):
+        """Declining a call leaves no trace in the log.
+
+        The only way to recover these is to check the rules against each seat's
+        hand at every discard, which is why the `call` kind was empty until now.
+        """
+        calls = [r for r in self.all_records if r["kind"] == "call"]
+        self.assertTrue(calls, "no call opportunities found")
+
+        # Seat 2 holds two East and takes the one seat 1 discards.
+        taken = [c for c in calls if c["actionTaken"] == "pon"]
+        self.assertEqual(len(taken), 1)
+        self.assertEqual(taken[0]["actor"], 2)
+        self.assertEqual(taken[0]["calledTile"], "E")
+        self.assertIn("pon", taken[0]["callOptions"])
+
+        for call in calls:
+            # The prefix must *include* the discard, which is what creates the
+            # decision — unlike a player's own discard, where it must stop before.
+            self.assertEqual(call["position"]["seat"], call["actor"])
+            self.assertEqual(len(call["position"]["hand"]), 13)
+            self.assertIn(call["actionTaken"], ("pass", "pon", "chi", "daiminkan"))
+
+    def test_a_seat_in_riichi_is_not_offered_calls(self):
+        log = build_log()
+        insert_at = log.index({"type": "tsumo", "actor": 1, "pai": "E"})
+        log.insert(insert_at, {"type": "reach", "actor": 1})
+        after = log.index({"type": "dahai", "actor": 1, "pai": "E", "tsumogiri": True}) + 1
+        log.insert(after, {"type": "reach_accepted", "actor": 1})
+        calls = [
+            record
+            for record in extract_from_events(log, game_id="test")
+            if record["kind"] == "call" and record["actor"] == 1
+        ]
+        # Seat 1 is locked into its hand from the moment the declaration stands.
+        self.assertEqual(calls, [])
 
     def test_ordinary_discards_are_not_flagged_as_declarations(self):
         for record in extract_from_events(build_log(), game_id="test"):

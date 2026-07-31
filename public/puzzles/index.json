@@ -1,36 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30",
+  "generatedAt": "2026-07-31",
   "provenance": "Positions mined from Tenhou houou-room logs redistributed by tenhou-to-mjai under CC BY 4.0, from games held out of model training. Expected values are computed by akochan's expected-value search in Tenhou houou placement points (+90/+45/0/-135); candidates are found by a 2.2M-parameter imitation network trained on 20M houou decisions, which also supplies the corroborating ranking. Positions where the two evaluators disagreed on the best action were discarded rather than adjudicated.",
-  "count": 906,
+  "count": 740,
   "shards": [
     {
       "file": "mined-000.json",
       "count": 250,
       "kinds": [
-        "discard",
-        "riichi"
+        "call",
+        "discard"
       ]
     },
     {
       "file": "mined-001.json",
       "count": 250,
       "kinds": [
-        "discard",
-        "riichi"
+        "discard"
       ]
     },
     {
       "file": "mined-002.json",
-      "count": 250,
-      "kinds": [
-        "discard",
-        "riichi"
-      ]
-    },
-    {
-      "file": "mined-003.json",
-      "count": 156,
+      "count": 240,
       "kinds": [
         "discard",
         "riichi"

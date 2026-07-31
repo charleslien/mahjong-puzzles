@@ -168,6 +168,71 @@ def build_actions(
     return actions
 
 
+CALL_LABELS = {
+    "pon": "Call pon",
+    "chi": "Call chi",
+    "daiminkan": "Call kan",
+    "none": "Let it pass",
+}
+
+
+def build_call_actions(
+    akochan_ranked: Sequence[Dict[str, Any]],
+    candidate: Dict[str, Any],
+) -> Optional[List[Dict[str, Any]]]:
+    """Turn akochan's options at an opponent's discard into call-or-pass.
+
+    akochan returns one entry per call *line* — a pon paired with each tile you
+    might discard after it — plus a single `none` for letting it go. The puzzle
+    asks whether to call at all, so each kind is reduced to its best line and the
+    follow-up discard is named in the label rather than made a separate question.
+    """
+    passing = next((entry for entry in akochan_ranked if entry["id"] == "none"), None)
+    if passing is None:
+        return None
+
+    best_of_kind: Dict[str, Dict[str, Any]] = {}
+    for entry in akochan_ranked:
+        kind = entry.get("kind")
+        if kind not in ("pon", "chi", "daiminkan"):
+            continue
+        if kind not in best_of_kind or entry["ev"] > best_of_kind[kind]["ev"]:
+            best_of_kind[kind] = entry
+
+    if not best_of_kind:
+        return None
+
+    names = candidate.get("tileLabels") or {}
+
+    def follow_up(entry: Dict[str, Any]) -> str:
+        tile = next(
+            (move.get("pai") for move in entry.get("moves", []) if move.get("type") == "dahai"),
+            None,
+        )
+        if not tile:
+            return ""
+        return ", then discard {}".format(names.get(tile, tile))
+
+    actions: List[Dict[str, Any]] = [
+        {
+            "id": "pass",
+            "label": CALL_LABELS["none"],
+            "tile": None,
+            "ev": passing["ev"],
+        }
+    ]
+    for kind, entry in sorted(best_of_kind.items()):
+        actions.append(
+            {
+                "id": kind,
+                "label": CALL_LABELS[kind] + follow_up(entry),
+                "tile": entry.get("tile"),
+                "ev": entry["ev"],
+            }
+        )
+    return actions
+
+
 def build_riichi_actions(
     akochan_ranked: Sequence[Dict[str, Any]],
     candidate: Dict[str, Any],
@@ -276,6 +341,42 @@ def verify_candidate(
     if not ranked:
         raise Rejection("akochan_returned_nothing")
 
+    if candidate.get("kind") == "call":
+        call_actions = build_call_actions(ranked, candidate)
+        if call_actions is None:
+            raise Rejection("akochan_offered_no_call")
+        kind = "call"
+        actions = call_actions
+        # Neither the network nor tile efficiency has a view on whether to call,
+        # so the second opinion is again the houou player's own choice.
+        took = str(candidate.get("actionTaken") or "pass")
+        best_call = max(
+            (a for a in actions if a["id"] != "pass"), key=lambda a: a["ev"], default=None
+        )
+        human_first = "pass" if took == "pass" else took
+        order = [human_first] + [a["id"] for a in actions if a["id"] != human_first]
+        rankings = [
+            [a["id"] for a in sorted(actions, key=lambda a: -a["ev"])],
+            order,
+        ]
+        evaluators = ["akochan", "houou-player"]
+        if best_call is None:
+            raise Rejection("no_choice")
+        enriched = dict(candidate)
+        enriched["kind"] = kind
+        enriched["actions"] = actions
+        enriched["rankings"] = rankings
+        enriched["evaluators"] = evaluators
+        enriched["epsilon"] = epsilon
+        enriched["history"] = _kyoku_history(history)
+        enriched["akochanBest"] = max(actions, key=lambda a: a["ev"])["id"]
+        screened = screen_candidate(
+            enriched, epsilon=epsilon, min_margin=min_margin, max_accepted=max_accepted
+        )
+        screened["agreement"] = True
+        screened["tags"] = tags_for(screened, actions, float(screened["margin"]))
+        return screened
+
     riichi_actions = build_riichi_actions(ranked, candidate)
     if riichi_actions is not None:
         # A declaration is available, so ask the more interesting question. The
@@ -346,7 +447,9 @@ def tags_for(
     kind = candidate.get("kind", "discard")
     tags = [kind]
 
-    if kind == "riichi":
+    if kind == "call":
+        tags.append("called" if candidate.get("actionTaken") != "pass" else "let-it-pass")
+    elif kind == "riichi":
         # Every riichi position is tenpai by definition, so "tenpai-choice" adds
         # nothing; whether the declaration was actually made is the useful axis.
         tags.append("declared" if candidate.get("declaredRiichi") else "stayed-concealed")

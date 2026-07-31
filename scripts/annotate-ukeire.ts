@@ -29,6 +29,8 @@ import type { Position } from '../src/types/puzzle';
 
 interface Candidate {
   position: Position;
+  kind?: string;
+  calledTile?: string;
   [key: string]: unknown;
 }
 
@@ -68,6 +70,20 @@ async function main(): Promise<number> {
     read += 1;
 
     const candidate = JSON.parse(trimmed) as Candidate;
+
+    // A call is judged at an opponent's discard, where the seat holds thirteen
+    // tiles: there is no discard to analyse yet. It still needs tile names, so
+    // the follow-up discard in "Call pon, then discard 3 circles" reads properly
+    // rather than as "3p".
+    if (candidate.kind === 'call') {
+      const names: Record<string, string> = {};
+      const tiles = [...candidate.position.hand, candidate.calledTile as string].filter(Boolean);
+      for (const tile of tiles) names[tile] = tileLabel(tile as never);
+      out.push(JSON.stringify({ ...candidate, tileLabels: names }));
+      annotated += 1;
+      continue;
+    }
+
     const analysis = analyzePosition(candidate.position);
     if (!analysis) {
       // Complete or far-from-tenpai hands are not discard problems. Dropped

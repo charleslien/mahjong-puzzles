@@ -212,6 +212,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if index % args.stride:
                 continue
             position = record.get("position") or {}
+            kind = record.get("kind", "discard")
+
+            # Only discard decisions get a model opinion. A call is judged at an
+            # opponent's discard, where the seat holds thirteen tiles and the
+            # network — which ranks discards from a fourteen-tile hand — has
+            # nothing to say. Scoring it anyway would produce a confident ranking
+            # of the wrong question.
+            if kind != "discard":
+                out.write(
+                    json.dumps(
+                        {**record, "modelRanking": [], "policy": {}, "policyEntropy": None},
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                )
+                out.write("\n")
+                written += 1
+                continue
+
             ranked = model.rank_actions(position)
             if len(ranked) < 2:
                 continue
