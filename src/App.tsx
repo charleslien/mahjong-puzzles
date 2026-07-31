@@ -4,6 +4,7 @@ import { About } from './components/About';
 import { AccountButton } from './components/AccountButton';
 import { ProgressPanel } from './components/ProgressPanel';
 import { PuzzleView } from './components/PuzzleView';
+import { SetSummary } from './components/SetSummary';
 import { gradeAnswer, type GradedAnswer } from './lib/grade';
 import { openSource, type BankMeta, type PuzzleSource } from './lib/puzzleSource';
 import {
@@ -63,13 +64,14 @@ const DIFFICULTY_BANDS = [
 ] as const;
 
 /**
- * How many puzzles a session holds.
+ * How many puzzles a set holds.
  *
- * Enough that nobody reaches the end of one in a sitting, small enough that the
- * page is not paying to download a bank it will not play. Running out simply
- * fetches more.
+ * Small enough to finish in a sitting. The stream used to be endless, which
+ * meant there was never a moment that said how you had done — you either kept
+ * going or closed the tab. A set that ends gives the session a shape and a
+ * result.
  */
-const SESSION_SIZE = 40;
+const SESSION_SIZE = 20;
 
 export default function App() {
   const [source, setSource] = useState<PuzzleSource>();
@@ -92,6 +94,9 @@ export default function App() {
   const [seed, setSeed] = useState(() => (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
   const [cursor, setCursor] = useState(0);
   const [answer, setAnswer] = useState<GradedAnswer>();
+  /** Grades from the current set, for the summary at the end of it. */
+  const [setResults, setSetResults] = useState<GradedAnswer[]>([]);
+  const [setDone, setSetDone] = useState(false);
 
   useEffect(() => {
     openSource().then(
@@ -164,6 +169,8 @@ export default function App() {
         setTotal(count);
         setCursor(0);
         setAnswer(undefined);
+        setSetResults([]);
+        setSetDone(false);
         // Community difficulty is a bonus; never let it fail the session.
         source
           .stats(puzzles.map((puzzle) => puzzle.id))
@@ -202,6 +209,7 @@ export default function App() {
       if (!current || answer) return;
       const graded = gradeAnswer(current, actionId);
       setAnswer(graded);
+      if (!linked) setSetResults((previous) => [...previous, graded]);
 
       // Mirror the attempt to the database when signed in. Deliberately not
       // awaited and never surfaced: local progress is the source of truth for
@@ -238,7 +246,7 @@ export default function App() {
         return next;
       });
     },
-    [current, answer],
+    [current, answer, linked],
   );
 
   const onNext = useCallback(() => {
@@ -251,14 +259,21 @@ export default function App() {
     setCursor((previous) => {
       const next = previous + 1;
       if (next >= session.length) {
-        // The page is spent. Ask for another rather than wrapping back to the
-        // top, which would replay the same forty puzzles forever.
-        setSeed((value) => value + 1);
-        return 0;
+        // End of the set: stop and say how it went rather than sliding straight
+        // into the next twenty.
+        setSetDone(true);
+        return previous;
       }
       return next;
     });
   }, [linked, session.length]);
+
+  const nextSet = useCallback(() => {
+    setSetDone(false);
+    setAnswer(undefined);
+    setCursor(0);
+    setSeed((value) => value + 1);
+  }, []);
 
   const startFreshSession = useCallback(() => {
     setAnswer(undefined);
@@ -411,7 +426,15 @@ export default function App() {
               </p>
             )}
 
-            {current ? (
+            {setDone ? (
+              <SetSummary
+                results={setResults}
+                onNext={nextSet}
+                onReviewMisses={
+                  setResults.some((result) => !result.correct) ? reviewMistakes : undefined
+                }
+              />
+            ) : current ? (
               <PuzzleView
                 key={current.id}
                 puzzle={current}

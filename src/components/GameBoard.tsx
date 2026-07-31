@@ -301,29 +301,26 @@ export function GameBoard({
           const melds = <Melds seat={state} owner={seat} position={position} size={riverSize} />;
           const river = <River seat={state} position={position} size={riverSize} />;
 
-          // A discard pile sits in front of its owner, between them and the
-          // centre of the table. For the three seats drawn above the centre that
-          // is below their hand, which is what the natural order already gives;
-          // for the viewer at the bottom it is *above* theirs, so the bottom
-          // seat is stacked the other way up.
+          // Every seat reads the same way: what they have shown — discards, then
+          // called melds — above the hand they are still holding, with the seat
+          // label on the outer edge.
+          //
+          // For the seats drawn above the centre this puts their discards further
+          // from the middle of the table than a real table would, where a discard
+          // pile always sits between its owner and the centre. Consistency won:
+          // one rule for four seats is easier to read than a mirrored one, and
+          // the concealed hand is a row of identical backs, so having it nearer
+          // the centre costs nothing.
           return (
             <div className={`board__side board__side--${position}`} key={position}>
-              {position === 'bottom' ? (
-                <>
-                  {river}
-                  {melds}
-                  {overlay && <div className="board__choices">{overlay}</div>}
-                  {hand}
-                  {plate}
-                </>
-              ) : (
-                <>
-                  {plate}
-                  {hand}
-                  {melds}
-                  {river}
-                </>
+              {position !== 'bottom' && plate}
+              {river}
+              {melds}
+              {position === 'bottom' && overlay && (
+                <div className="board__choices">{overlay}</div>
               )}
+              {hand}
+              {position === 'bottom' && plate}
             </div>
           );
         })}
