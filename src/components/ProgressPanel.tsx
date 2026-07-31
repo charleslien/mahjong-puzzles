@@ -30,10 +30,12 @@ function when(at: number): string {
 export function ProgressPanel({
   progress,
   source,
+  onReviewMistakes,
   onClear,
 }: {
   progress: Progress;
   source: PuzzleSource;
+  onReviewMistakes: () => void;
   onClear: () => void;
 }) {
   const summary = summarize(progress);
@@ -83,6 +85,11 @@ export function ProgressPanel({
 
   // Newest first, so the most recent hand is the easiest one to go back to.
   const history = [...progress.attempts].sort((a, b) => b.at - a.at);
+  // Distinct puzzles answered less than optimally — what a review drill would
+  // contain, so the button can say how much work it is.
+  const missed = new Set(
+    progress.attempts.filter((attempt) => attempt.grade !== 'optimal').map((a) => a.puzzleId),
+  ).size;
 
   return (
     <>
@@ -129,7 +136,14 @@ export function ProgressPanel({
       </section>
 
       <section className="panel">
-        <h2>Hands you have played</h2>
+        <div className="panel__head">
+          <h2>Hands you have played</h2>
+          {missed > 0 && (
+            <button type="button" className="button button--primary" onClick={onReviewMistakes}>
+              Review {missed} miss{missed === 1 ? '' : 'es'}
+            </button>
+          )}
+        </div>
         <ul className="history">
           {history.map((attempt) => {
             const puzzle = byId.get(attempt.puzzleId);

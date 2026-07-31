@@ -41,6 +41,20 @@ function parseHash(): Route {
   return { view: 'train' };
 }
 
+/**
+ * Decision kinds a session can be narrowed to.
+ *
+ * Worth having as its own control rather than a tag filter: the three ask
+ * genuinely different questions, and someone who wants to drill calls does not
+ * want them one in five.
+ */
+const KINDS = [
+  { id: 'all', label: 'All', kinds: undefined as string[] | undefined },
+  { id: 'discard', label: 'Discards', kinds: ['discard'] },
+  { id: 'riichi', label: 'Riichi', kinds: ['riichi'] },
+  { id: 'call', label: 'Calls', kinds: ['call'] },
+] as const;
+
 const DIFFICULTY_BANDS = [
   { id: 'all', label: 'All', min: 0, max: 100 },
   { id: 'easy', label: 'Easy', min: 0, max: 40 },
@@ -69,6 +83,9 @@ export default function App() {
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
 
   const [band, setBand] = useState<(typeof DIFFICULTY_BANDS)[number]['id']>('all');
+  const [kindFilter, setKindFilter] = useState<(typeof KINDS)[number]['id']>('all');
+  // When set, the session replays exactly these puzzles instead of sampling.
+  const [drill, setDrill] = useState<string[]>();
   // A fresh order per visit. This was a constant, so every reload dealt the
   // identical shuffle and reopened the same puzzle — the site looked like it had
   // one position in it.
@@ -123,6 +140,7 @@ export default function App() {
     if (!source) return;
     let live = true;
     const selected = DIFFICULTY_BANDS.find((candidate) => candidate.id === band)!;
+    const kinds = KINDS.find((candidate) => candidate.id === kindFilter)!.kinds;
 
     void (async () => {
       try {
@@ -131,11 +149,15 @@ export default function App() {
             size: SESSION_SIZE,
             minDifficulty: selected.min,
             maxDifficulty: selected.max,
+            kinds: kinds ? [...kinds] : undefined,
+            onlyIds: drill,
             // Answered puzzles go to the back rather than being dropped, so a
             // session never runs out.
-            excludeIds: [...attemptedIds(progress)],
+            excludeIds: drill ? undefined : [...attemptedIds(progress)],
           }),
-          source.count(selected.min, selected.max),
+          drill
+            ? Promise.resolve(drill.length)
+            : source.count(selected.min, selected.max, kinds ? [...kinds] : undefined),
         ]);
         if (!live) return;
         setSession(puzzles);
@@ -156,7 +178,7 @@ export default function App() {
     // `progress` is read but deliberately not a dependency: refetching the moment
     // an answer lands would replace the puzzle still on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, band, seed]);
+  }, [source, band, kindFilter, seed, drill]);
 
   // A permalinked puzzle takes precedence over wherever the session sits, and
   // may not be in the sampled page at all, so it is fetched by id.
@@ -246,9 +268,38 @@ export default function App() {
 
   const onBandChange = useCallback((next: (typeof DIFFICULTY_BANDS)[number]['id']) => {
     setBand(next);
+    setDrill(undefined);
     setAnswer(undefined);
     setCursor(0);
   }, []);
+
+  const onKindChange = useCallback((next: (typeof KINDS)[number]['id']) => {
+    setKindFilter(next);
+    setDrill(undefined);
+    setAnswer(undefined);
+    setCursor(0);
+  }, []);
+
+  /**
+   * Replay the puzzles answered wrong, hardest miss first.
+   *
+   * The most useful thing a solver can do with a history is work through what
+   * they got wrong, and that data has been sitting in progress unused.
+   */
+  const reviewMistakes = useCallback(() => {
+    const worst = new Map<string, number>();
+    for (const attempt of progress.attempts) {
+      if (attempt.grade === 'optimal') continue;
+      // Keep each puzzle once, at its largest loss.
+      worst.set(attempt.puzzleId, Math.max(worst.get(attempt.puzzleId) ?? 0, attempt.loss));
+    }
+    const ids = [...worst.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+    if (!ids.length) return;
+    setDrill(ids.slice(0, SESSION_SIZE));
+    setAnswer(undefined);
+    setCursor(0);
+    window.location.hash = '#/train';
+  }, [progress.attempts]);
 
   return (
     <div className="app">
@@ -294,6 +345,20 @@ export default function App() {
         {source && route.view === 'train' && (
           <>
             <div className="sessionbar">
+              <div className="sessionbar__group" role="group" aria-label="Decision kind">
+                {KINDS.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className={`chip ${kindFilter === candidate.id && !drill ? 'chip--on' : ''}`}
+                    onClick={() => onKindChange(candidate.id)}
+                    aria-pressed={kindFilter === candidate.id && !drill}
+                  >
+                    {candidate.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="sessionbar__group" role="group" aria-label="Difficulty">
                 {DIFFICULTY_BANDS.map((candidate) => (
                   <button
@@ -336,6 +401,16 @@ export default function App() {
               </p>
             )}
 
+            {drill && !linked && (
+              <p className="permalink-note">
+                Reviewing {drill.length} puzzle{drill.length === 1 ? '' : 's'} you missed, hardest
+                first.{' '}
+                <button type="button" className="linkbutton" onClick={() => setDrill(undefined)}>
+                  Back to a normal session
+                </button>
+              </p>
+            )}
+
             {current ? (
               <PuzzleView
                 key={current.id}
@@ -360,6 +435,7 @@ export default function App() {
           <ProgressPanel
             progress={progress}
             source={source}
+            onReviewMistakes={reviewMistakes}
             onClear={() => setProgress(clearProgress())}
           />
         )}

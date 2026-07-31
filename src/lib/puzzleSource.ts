@@ -31,6 +31,10 @@ export interface SessionRequest {
   size: number;
   minDifficulty: number;
   maxDifficulty: number;
+  /** Decision kinds to draw from; undefined means all of them. */
+  kinds?: string[];
+  /** Only these puzzles, in this order. Used to replay a set of mistakes. */
+  onlyIds?: string[];
   /** Puzzles already answered, so a session leads with unseen ones. */
   excludeIds?: string[];
 }
@@ -47,7 +51,7 @@ export interface PuzzleSource {
   /** One session's puzzles, already in the order they should be played. */
   session(request: SessionRequest): Promise<Puzzle[]>;
   /** How many puzzles exist in a difficulty band. */
-  count(minDifficulty: number, maxDifficulty: number): Promise<number>;
+  count(minDifficulty: number, maxDifficulty: number, kinds?: string[]): Promise<number>;
   byId(id: string): Promise<Puzzle | undefined>;
   byIds(ids: string[]): Promise<Puzzle[]>;
   stats(ids: string[]): Promise<Map<string, PuzzleStats>>;
@@ -121,10 +125,22 @@ export const staticSource: PuzzleSource = {
     return { count: index.count, generatedAt: index.generatedAt, provenance: index.provenance };
   },
 
-  async session({ size, minDifficulty, maxDifficulty, excludeIds }) {
+  async session({ size, minDifficulty, maxDifficulty, kinds, onlyIds, excludeIds }) {
     const { puzzles } = await loadStaticBank();
+
+    if (onlyIds?.length) {
+      const wanted = new Set(onlyIds);
+      const found = new Map(puzzles.filter((p) => wanted.has(p.id)).map((p) => [p.id, p]));
+      // Keep the caller's order — a mistakes drill is deliberately ordered.
+      return onlyIds.map((id) => found.get(id)).filter((p): p is Puzzle => Boolean(p));
+    }
+
     const seen = new Set(excludeIds ?? []);
-    const matching = puzzles.filter((puzzle) => inBand(puzzle, minDifficulty, maxDifficulty));
+    const matching = puzzles.filter(
+      (puzzle) =>
+        inBand(puzzle, minDifficulty, maxDifficulty) &&
+        (!kinds?.length || kinds.includes(puzzle.kind)),
+    );
     const order = shuffled(matching, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
     // Unseen first, but answered ones stay in the queue rather than being
     // dropped, so a session never runs dry.
@@ -133,9 +149,13 @@ export const staticSource: PuzzleSource = {
     return [...fresh, ...repeats].slice(0, size);
   },
 
-  async count(minDifficulty, maxDifficulty) {
+  async count(minDifficulty, maxDifficulty, kinds) {
     const { puzzles } = await loadStaticBank();
-    return puzzles.filter((puzzle) => inBand(puzzle, minDifficulty, maxDifficulty)).length;
+    return puzzles.filter(
+      (puzzle) =>
+        inBand(puzzle, minDifficulty, maxDifficulty) &&
+        (!kinds?.length || kinds.includes(puzzle.kind)),
+    ).length;
   },
 
   async byId(id) {
@@ -211,14 +231,20 @@ export const supabaseSource: PuzzleSource = {
     };
   },
 
-  async session({ size, minDifficulty, maxDifficulty, excludeIds }) {
+  async session({ size, minDifficulty, maxDifficulty, kinds, onlyIds, excludeIds }) {
     const db = await supabase();
+
+    if (onlyIds?.length) {
+      const found = new Map((await this.byIds(onlyIds)).map((puzzle) => [puzzle.id, puzzle]));
+      return onlyIds.map((id) => found.get(id)).filter((p): p is Puzzle => Boolean(p));
+    }
+
     const exclude = (excludeIds ?? []).slice(-MAX_EXCLUSIONS);
     const { data, error } = await db.rpc('sample_puzzles', {
       sample_size: size,
       min_difficulty: minDifficulty,
       max_difficulty: maxDifficulty,
-      kinds: null,
+      kinds: kinds?.length ? kinds : null,
       any_tags: null,
       exclude_ids: exclude.length ? exclude : null,
     });
@@ -227,17 +253,17 @@ export const supabaseSource: PuzzleSource = {
     // Everything unseen is exhausted; fall back to replaying answered ones so the
     // session does not simply end.
     if (rows.length === 0 && exclude.length) {
-      return this.session({ size, minDifficulty, maxDifficulty });
+      return this.session({ size, minDifficulty, maxDifficulty, kinds });
     }
     return rows.map(fromRow);
   },
 
-  async count(minDifficulty, maxDifficulty) {
+  async count(minDifficulty, maxDifficulty, kinds) {
     const db = await supabase();
     const { data, error } = await db.rpc('count_puzzles', {
       min_difficulty: minDifficulty,
       max_difficulty: maxDifficulty,
-      kinds: null,
+      kinds: kinds?.length ? kinds : null,
       any_tags: null,
     });
     if (error) throw new Error(`count_puzzles: ${error.message}`);

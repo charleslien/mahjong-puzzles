@@ -101,17 +101,55 @@ export function PuzzleView({
   const toStart = useCallback(() => setCursor(0), []);
   const toDecision = useCallback(() => setCursor(decisionFrame), [decisionFrame]);
 
+  /**
+   * Answer a non-discard puzzle by number.
+   *
+   * Discards are answered by clicking a tile, but riichi and call puzzles are
+   * buttons and were mouse-only — the one part of the interface a keyboard could
+   * not reach.
+   */
+  const chooseByNumber = useCallback(
+    (index: number) => {
+      if (answered || !atDecision || puzzle.kind === 'discard') return;
+      const action = puzzle.actions[index];
+      if (action) onAnswer(action.id);
+    },
+    [answered, atDecision, puzzle, onAnswer],
+  );
+
   // Held in a ref so the listener can stay mounted once rather than rebinding on
   // every cursor change.
-  const handlers = useRef({ stepBack, stepForward, toStart, toDecision, onNext, answered });
-  handlers.current = { stepBack, stepForward, toStart, toDecision, onNext, answered };
+  const handlers = useRef({
+    stepBack,
+    stepForward,
+    toStart,
+    toDecision,
+    onNext,
+    answered,
+    chooseByNumber,
+  });
+  handlers.current = {
+    stepBack,
+    stepForward,
+    toStart,
+    toDecision,
+    onNext,
+    answered,
+    chooseByNumber,
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      // Leave form controls alone; the scrubber uses arrows itself.
-      if (target && ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return;
+      const tag = target?.tagName;
+      // Text and range inputs own their keys entirely — the scrubber uses arrows.
+      if (tag && ['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+      // A focused button only owns the keys that would activate it. Bailing on
+      // every key while a button had focus meant that clicking any control —
+      // a filter chip, Shuffle — silently disabled every shortcut until you
+      // clicked elsewhere.
+      if (tag === 'BUTTON' && (event.key === 'Enter' || event.key === ' ')) return;
 
       const current = handlers.current;
       switch (event.key) {
@@ -142,6 +180,11 @@ export function PuzzleView({
           }
           break;
         default:
+          // 1-9 pick an option on puzzles that are answered by button.
+          if (/^[1-9]$/.test(event.key)) {
+            event.preventDefault();
+            current.chooseByNumber(Number(event.key) - 1);
+          }
           break;
       }
     };
@@ -279,7 +322,7 @@ export function PuzzleView({
             </p>
           ) : (
             <div className="ask__actions">
-              {puzzle.actions.map((action) => (
+              {puzzle.actions.map((action, index) => (
                 <button
                   key={action.id}
                   type="button"
@@ -287,6 +330,7 @@ export function PuzzleView({
                   onClick={() => onAnswer(action.id)}
                   disabled={!atDecision}
                 >
+                  <kbd className="choice__key">{index + 1}</kbd>
                   {action.label}
                 </button>
               ))}
