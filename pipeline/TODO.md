@@ -148,7 +148,56 @@ index integrity.
 - [x] **Answer balancing.** Calls came out 84% "pass"; capped at 60% so the bank
       cannot be beaten by reflex.
 
-## 8. Remaining
+## 8. Next: play call and riichi decisions out in full
+
+The biggest known problem with the bank. A riichi puzzle currently asks a binary
+question — declare, or the single best concealed line — and a call puzzle asks
+call-or-pass with one pre-chosen follow-up discard. Both throw away most of the
+decision, and both feel awkward to play because the interesting part (which tile,
+which set) has already been decided for you.
+
+**akochan already returns the whole tree.** Measured on two real positions:
+
+    riichi position: 17 lines -> 5 x (reach + a specific discard)
+                                 12 x (a plain discard)
+    call position:    9 lines -> 1 x (none)
+                                 8 x (chi with a specific set + a discard)
+
+Note the 5 against 12: only tiles that keep tenpai may be discarded on a
+declaration, which is exactly the narrowing the interface should show. The
+pipeline collapses all of this to two options in `build_riichi_actions` and
+`build_call_actions`.
+
+What to change:
+
+1. Emit every line as an action, with a structured id and fields rather than a
+   prose label:
+
+       {"id": "riichi:3p",            "branch": "riichi", "tile": "3p"}
+       {"id": "dama:9p",              "branch": "dama",   "tile": "9p"}
+       {"id": "pass",                 "branch": "pass"}
+       {"id": "chi:2s|3s:5m",         "branch": "chi", "consumed": ["2s","3s"], "tile": "5m"}
+
+   The consumed set has to be part of the identity: chi-ing 4s with 2s+3s and
+   with 3s+5s are different plays, and so is using the red five rather than the
+   plain one.
+
+2. Grading needs no change in principle — a chosen line is compared to the best
+   line — but `criteria.py` will see many more actions per puzzle, so
+   `DEFAULT_MAX_ACCEPTED` and the margin test want re-tuning against real
+   distributions rather than assumed ones. Expect `too_many_answers` to rise.
+
+3. The interface walks the branch: declare or not, then which set if a call has
+   several, then which tile from the hand — restricted to the legal set for that
+   branch, which is where the 5-versus-12 narrowing becomes visible and useful.
+
+4. Regenerate. Verification is the slow part, and calls run at roughly 0.7
+   positions/s against 5 for a discard.
+
+Do this as one change: a bank of line-level actions rendered by an interface that
+still expects two options would be worse than either.
+
+## 9. Remaining
 
 - [ ] **Post-call discards cannot be verified.** akochan evaluates when the seat
       draws, or when another seat discards or adds to a pon — a discard made
