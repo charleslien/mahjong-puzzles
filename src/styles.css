@@ -1879,17 +1879,48 @@ kbd {
   font-size: 0.8em;
 }
 
-/* Undo one step of a decision. Quieter than the choices themselves: it is a way
-   out, not one of the answers. */
-.choices__back {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.28);
-  color: #fff;
-  padding-block: 0.15rem;
+/* One row per step of the decision, each staying on screen with its answer
+   marked. */
+/* Stretched to the panel, not sized by its own contents.
+
+   The panel is a centred column, so anything inside it is fit-content by
+   default — and a wrapping flex row's fit-content width is one item wide, not
+   the row's. That is why two options that easily fit side by side in a 600px
+   panel were stacked in a 236px column, each one on its own line. Stretching is
+   safe here where a percentage width would not be: the panel's own width comes
+   from its parent, not from what is inside it. */
+.choices__step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-self: stretch;
+  align-items: stretch;
 }
 
-.choices__back:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+/* The closing instruction, once the buttons are settled and the answer is a
+   tile in the hand. Lighter than a prompt with options under it. */
+.choices__prompt--hint {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* The option taken. Marked rather than removed, so the chain reads back and any
+   step can be changed by picking a different one. */
+.choices__actions .button--choice-on {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+
+.choices__actions .button--choice-on:hover:not(:disabled) {
+  background: var(--accent-fill);
+  filter: brightness(1.08);
+}
+
+.choices__actions .button--choice-on .choice__key {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: var(--on-accent);
 }
 
 /* A call the solver has committed to but not finished, drawn where the finished

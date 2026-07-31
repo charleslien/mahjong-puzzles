@@ -254,12 +254,22 @@ afterwards. Each complete line is its own action with its own expected value, so
 calling correctly and then throwing the wrong tile is not the same answer as
 calling correctly.
 
+Each step stays on screen with its answer marked, and any of them can be changed
+by picking a different option — choosing a different call clears the set that was
+chosen for the old one, since it is not a set of the new one. The first version
+replaced each step with the next and offered a Back button, which turned a
+three-step call into a wizard: you could not see what you had committed to, and
+revising the first choice meant unwinding the rest by hand.
+
 The legal tiles narrow with the branch, which is the most useful thing on the
 screen: declaring restricts you to tiles that keep tenpai, and a sampled position
 offers 3 ways to declare against 12 ways to play on. The illegal ones are dimmed
-rather than removed — a tile that has vanished teaches nothing. A branch with one
-line resolves without asking, since a question with a single answer is not a
-question.
+rather than removed — a tile that has vanished teaches nothing. A branch whose one
+line throws nothing at all (letting a discard pass, or an open kan, which is
+followed by a draw from the dead wall) settles the puzzle outright; a branch with
+a single *legal discard* does not, because clicking a fork and having the puzzle
+answer itself is a jump, and watching the hand narrow to one tile is the clearest
+statement the position makes.
 
 The consumed set is part of an action's identity (`chi:2s+3s:5m`): chi-ing 4
 bamboo with 2+3 leaves a different hand than with 3+5, and eating the red five

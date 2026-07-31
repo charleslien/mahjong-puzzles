@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
+  BRANCH_LABELS,
   branchesOf,
   consumedKey,
   consumedSets,
@@ -14,7 +15,7 @@ import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay'
 import type { Tile } from '../lib/tiles';
 import type { PuzzleStats } from '../lib/supabase';
 import type { ActionBranch, MeldKind, Puzzle } from '../types/puzzle';
-import { DecisionSteps } from './DecisionSteps';
+import { DecisionSteps, type Step } from './DecisionSteps';
 import { Feedback } from './Feedback';
 import { GameBoard } from './GameBoard';
 
@@ -104,9 +105,10 @@ export function PuzzleView({
   const branches = useMemo(() => branchesOf(puzzle.actions), [puzzle]);
   // Only asked when the call could eat more than one set — chi-ing with 2+3 or
   // with 3+5 are different hands afterwards, but there is nothing to ask when
-  // there is one way to do it.
+  // there is one way to do it. Computed whether or not one is chosen, since the
+  // row stays on screen with its answer marked.
   const sets = useMemo(
-    () => (taken && !taken.consumed ? consumedSets(puzzle.actions, taken.branch) : []),
+    () => (taken ? consumedSets(puzzle.actions, taken.branch) : []),
     [puzzle, taken],
   );
 
@@ -116,7 +118,8 @@ export function PuzzleView({
     [puzzle, taken],
   );
 
-  const pickingTile = multiStep && taken !== undefined && sets.length <= 1;
+  const needsSet = taken !== undefined && sets.length > 1 && taken.consumed === undefined;
+  const pickingTile = multiStep && taken !== undefined && !needsSet;
   // Only while the question is open. Once answered the feedback table explains
   // the position, and leaving eleven of fourteen tiles dimmed underneath it —
   // some of them also carrying verdict stripes — says two things at once.
@@ -161,36 +164,39 @@ export function PuzzleView({
   };
 
   /**
-   * Commit to a fork, and skip any question it leaves with only one answer.
+   * Commit to a fork, or change one already committed to.
    *
-   * Letting a discard pass has no follow-up, and a hand with exactly one tenpai
-   * tile offers exactly one way to declare. Asking anyway would be a button with
-   * a single option on it.
+   * A branch whose single line throws nothing — letting a discard pass, or an
+   * open kan, which is followed by a draw from the dead wall — is the whole
+   * answer, so it settles the puzzle outright.
+   *
+   * A branch with one *legal discard* does not. It still shows the tile step
+   * with that one tile live, because clicking a fork and having the puzzle
+   * answer itself is a jump, and because seeing the hand narrow to a single
+   * legal tile is the clearest statement the position makes.
    */
   const chooseBranch = useCallback(
     (branch: ActionBranch) => {
+      // Re-picking the fork already taken would clear the set chosen under it
+      // for no reason.
+      if (taken?.branch === branch) return;
       const lines = linesIn(puzzle.actions, branch);
-      if (lines.length === 1) {
+      if (lines.length === 1 && lines[0].tile === undefined) {
         onAnswer(lines[0].id);
         return;
       }
       const options = consumedSets(puzzle.actions, branch);
       setTaken({ branch, consumed: options.length === 1 ? options[0] : undefined });
     },
-    [puzzle, onAnswer],
+    [puzzle, taken, onAnswer],
   );
 
   const chooseSet = useCallback(
     (consumed: Tile[]) => {
       if (!taken) return;
-      const lines = linesIn(puzzle.actions, taken.branch, consumed);
-      if (lines.length === 1) {
-        onAnswer(lines[0].id);
-        return;
-      }
       setTaken({ ...taken, consumed });
     },
-    [puzzle, taken, onAnswer],
+    [taken],
   );
 
   const frame = frames[Math.min(cursor, frames.length - 1)];
@@ -204,11 +210,12 @@ export function PuzzleView({
   const toDecision = useCallback(() => setCursor(decisionFrame), [decisionFrame]);
 
   /**
-   * Take the numbered choice on whichever step is showing.
+   * Take the numbered choice on the deepest step still open.
    *
-   * Tiles are picked by clicking, but the fork and the set are buttons, and
-   * those used to be mouse-only — the one part of the interface a keyboard could
-   * not reach.
+   * Every step stays on screen, so the numbers address the one actually being
+   * asked rather than all of them at once — numbering every visible option would
+   * need a modifier to disambiguate, and the shortcut exists so a keyboard can
+   * reach the buttons at all.
    */
   const chooseByNumber = useCallback(
     (index: number) => {
@@ -218,17 +225,22 @@ export function PuzzleView({
         if (branch) chooseBranch(branch);
         return;
       }
-      const set = sets[index];
-      if (set) chooseSet(set);
+      if (needsSet) {
+        const set = sets[index];
+        if (set) chooseSet(set);
+      }
     },
-    [answered, atDecision, multiStep, taken, branches, sets, chooseBranch, chooseSet],
+    [answered, atDecision, multiStep, taken, needsSet, branches, sets, chooseBranch, chooseSet],
   );
 
-  /** Undo the last committed step. False when there was nothing to undo. */
+  /**
+   * Undo the last committed step. False when there was nothing to undo.
+   *
+   * Every step is re-selectable by clicking, so this is only the keyboard's way
+   * of walking back out — a set first, then the call it belongs to.
+   */
   const stepBackChoice = useCallback((): boolean => {
     if (!taken) return false;
-    // A set chosen for a call is undone before the call itself, so Back walks
-    // out the way the solver walked in.
     const several = consumedSets(puzzle.actions, taken.branch).length > 1;
     setTaken(taken.consumed && several ? { branch: taken.branch } : undefined);
     return true;
@@ -320,40 +332,46 @@ export function PuzzleView({
 
   // The steps belong on the table next to the hand they concern, not in a panel
   // underneath it.
+  // Every step the solver has reached, each with its answer marked and each
+  // still clickable — the chain stays on screen rather than being replaced by
+  // the next question, so what has been committed to is readable and any part of
+  // it can be revised in place.
   let choices: ReactNode;
   if (!answered && multiStep) {
-    if (!taken) {
-      choices = (
-        <DecisionSteps
-          prompt={PROMPTS[puzzle.kind]}
-          branches={branches}
-          onBranch={chooseBranch}
-          disabled={!atDecision}
-        />
-      );
-    } else if (sets.length > 1) {
-      choices = (
-        <DecisionSteps
-          prompt="Which tiles do you call with?"
-          sets={sets}
-          onSet={chooseSet}
-          onBack={stepBackChoice}
-          disabled={!atDecision}
-        />
-      );
-    } else {
-      choices = (
-        <DecisionSteps
-          prompt={
-            atDecision
+    const steps: Step[] = [
+      {
+        key: 'branch',
+        prompt: PROMPTS[puzzle.kind],
+        options: branches.map((branch) => ({ id: branch, label: BRANCH_LABELS[branch] })),
+        selected: taken?.branch,
+        onPick: (id) => chooseBranch(id as ActionBranch),
+      },
+    ];
+    if (taken && sets.length > 1) {
+      steps.push({
+        key: 'set',
+        prompt: 'Which tiles do you call with?',
+        options: sets.map((consumed) => ({ id: consumedKey(consumed), tiles: consumed })),
+        selected: taken.consumed ? consumedKey(taken.consumed) : undefined,
+        onPick: (id) => {
+          const set = sets.find((consumed) => consumedKey(consumed) === id);
+          if (set) chooseSet(set);
+        },
+      });
+    }
+    choices = (
+      <DecisionSteps
+        steps={steps}
+        hint={
+          pickingTile
+            ? atDecision
               ? 'And which tile do you discard?'
               : 'Return to the decision to answer.'
-          }
-          onBack={stepBackChoice}
-          disabled={!atDecision}
-        />
-      );
-    }
+            : undefined
+        }
+        disabled={!atDecision}
+      />
+    );
   }
 
   // The call in progress while the question is open, and the call that was
