@@ -10,34 +10,22 @@ const SEAT_WINDS = ['E', 'S', 'W', 'N'] as const;
 type Position = 'bottom' | 'right' | 'top' | 'left';
 
 /**
- * Every seat's tiles face the player they belong to.
+ * Every seat's tiles face the player they belong to — but the turn is applied to
+ * the seat's whole block in CSS (`.board__seat`), not to each tile.
  *
- * A tile lying on the table reads with its top edge away from its owner, so the
- * seat across the table is upside down and the two side seats are on their
- * sides. That is what the board now draws.
+ * Rotating tiles individually was the first attempt and it reads wrongly: the
+ * faces point the right way while the rows still run across the screen, so a
+ * side seat's hand looks like a row of tiles knocked over rather than a hand
+ * seen from the side. Turning the block turns the rows with it, which also puts
+ * each seat's discards between them and the centre the way a table does.
  *
- * The rows themselves stay horizontal and keep reading left to right. Turning
- * the *faces* is what tells you whose tiles you are looking at; turning the
- * layout as well would scramble discard order for three seats out of four, which
- * is information a study tool cannot afford to lose.
- *
- * A quarter turn on top of the seat's own orientation still means what it always
- * means at a table: the riichi tile in a river, and the claimed tile in a meld.
- * Both are relative to the owner, which is why they compose rather than replace.
+ * So inside a seat's own frame every tile is upright, and the only rotations
+ * left here are the two that mean something at a table: the riichi declaration
+ * tile laid sideways in a river, and the claimed tile in a meld. Both are a
+ * quarter turn *relative to their owner*, which is exactly what a plain 90 is
+ * once the block carries the seat's orientation.
  */
-const SEAT_ROTATION: Record<Position, Rotation> = {
-  bottom: 0,
-  // The seat on the right faces left across the felt, so the top of their tiles
-  // points left: a quarter turn anticlockwise, not clockwise.
-  right: 270,
-  top: 180,
-  left: 90,
-};
-
-/** A quarter turn clockwise on top of whatever the owner's orientation is. */
-function turned(base: Rotation): Rotation {
-  return ((base + 90) % 360) as Rotation;
-}
+const TURNED: Rotation = 90;
 
 function windFor(seat: Seat, oya: Seat): string {
   return SEAT_WINDS[(seat - oya + 4) % 4];
@@ -55,7 +43,6 @@ function River({
   /** This seat just made the discard a call puzzle is asking about. */
   offering?: boolean;
 }) {
-  const base = SEAT_ROTATION[position];
   const last = seat.river.length - 1;
   return (
     <div className={`board__river board__river--${position}`}>
@@ -69,7 +56,7 @@ function River({
             key={`${entry.tile}-${i}`}
             tile={entry.tile}
             size={size}
-            rotation={entry.riichi ? turned(base) : base}
+            rotation={entry.riichi ? TURNED : 0}
             spent={entry.called}
             offered={offered}
             describedAs={
@@ -152,7 +139,6 @@ function Melds({
   // Rendered even when empty. Returning null here made a seat's whole column
   // shorter until it called something, so any call mid-hand shifted every
   // control below the board — the row's height is reserved in CSS instead.
-  const base = SEAT_ROTATION[position];
   return (
     <div className={`board__melds board__melds--${position}`}>
       {seat.melds.map((meld, i) => (
@@ -164,7 +150,7 @@ function Melds({
               size={size}
               // Sideways relative to its owner, the way a claimed tile is laid on
               // a real table.
-              rotation={entry.claimed ? turned(base) : base}
+              rotation={entry.claimed ? TURNED : 0}
               describedAs={entry.claimed ? claimedFrom(meld.from, owner) : undefined}
             />
           ))}
@@ -197,13 +183,11 @@ function Hand({
 }) {
   // Contents genuinely unrecorded: draw the right number of backs and never
   // reveal them, whatever the reveal toggle says.
-  const base = SEAT_ROTATION[position];
-
   if (seat.unknownCount !== undefined) {
     return (
       <div className={`board__hand board__hand--${position}`}>
         {Array.from({ length: Math.max(0, seat.unknownCount) }, (_, i) => (
-          <TileView key={i} size={size} rotation={base} />
+          <TileView key={i} size={size} />
         ))}
       </div>
     );
@@ -242,7 +226,6 @@ function Hand({
             key={`${tile}-${i}`}
             tile={reveal ? tile : undefined}
             size={size}
-            rotation={base}
             accent={reveal ? accentFor?.(tile) : undefined}
             onSelect={interactive && reveal && allowed ? onSelect : undefined}
             // A tile the call has eaten is drawn as an empty slot, because it is
@@ -264,7 +247,6 @@ function Hand({
           <TileView
             tile={reveal ? drawn : undefined}
             size={size}
-            rotation={base}
             drawn
             accent={reveal ? accentFor?.(drawn) : undefined}
             onSelect={
@@ -462,25 +444,31 @@ export function GameBoard({
             />
           );
 
-          // Every seat reads the same way: what they have shown — discards, then
-          // called melds — above the hand they are still holding, with the seat
-          // label on the outer edge.
+          // Every seat is built identically — river, then melds, then the hand —
+          // and the whole block is then turned to face its owner in CSS. Turning
+          // the block rather than the tiles inside it is what makes a side seat
+          // read as a hand seen from the side: rotating each tile on its own left
+          // the rows running across the screen, so a hand looked like tiles
+          // knocked over rather than someone's hand.
           //
-          // For the seats drawn above the centre this puts their discards further
-          // from the middle of the table than a real table would, where a discard
-          // pile always sits between its owner and the centre. Consistency won:
-          // one rule for four seats is easier to read than a mirrored one, and
-          // the concealed hand is a row of identical backs, so having it nearer
-          // the centre costs nothing.
+          // It also puts each seat's discards between them and the centre, the
+          // way a table does, which the upright version could not do without
+          // mirroring the rule for half the seats.
+          //
+          // The score plate stays outside the turn. It is text about a player,
+          // not something on the felt, and upside-down numbers are just harder to
+          // read.
           return (
             <div className={`board__side board__side--${position}`} key={position}>
               {position !== 'bottom' && plate}
-              {river}
-              {melds}
-              {position === 'bottom' && overlay && (
-                <div className="board__choices">{overlay}</div>
-              )}
-              {hand}
+              <div className="board__seat">
+                {river}
+                {melds}
+                {position === 'bottom' && overlay && (
+                  <div className="board__choices">{overlay}</div>
+                )}
+                {hand}
+              </div>
               {position === 'bottom' && plate}
             </div>
           );

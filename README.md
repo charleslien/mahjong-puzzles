@@ -134,7 +134,7 @@ src/lib/           the mahjong core, shared by site and generators
   puzzleSource.ts  the bank, from Supabase or from the committed JSON
 
 src/components/
-  GameBoard.tsx    four-sided table; per-seat tile rotation
+  GameBoard.tsx    four-sided table; each seat's block turned to face it
   PuzzleView.tsx   the drill, with the hand's history scrubbable in place
   DecisionSteps.tsx  one step of a multi-step decision
   Feedback.tsx     the option table, grouped by branch
@@ -202,18 +202,29 @@ them — worth doing, not done.
 
 ### Tile orientation and layout
 
-Each seat's tiles face the seat they belong to: a tile lying on a table reads with
-its top edge away from its owner, so the seat across is upside down and the two
-side seats are on their sides. The *rows* stay horizontal and keep reading left to
-right — turning the faces is what tells you whose tiles you are looking at, while
-turning the layout as well would scramble discard order for three seats out of
-four.
+Each seat's tiles face the seat they belong to, and the turn is applied to the
+seat's whole block rather than to each tile. Rotating tiles individually reads
+wrongly: the faces point the right way while the rows still run across the
+screen, so a side seat's hand looks like tiles knocked over rather than a hand
+seen from the side.
 
-A quarter turn on top of a seat's own orientation keeps its table meaning: the
-riichi declaration tile in a river, and the claimed tile in a meld. Both are
-relative to the owner, so they compose with the seat rotation rather than replace
-it. The claimed tile also sits on the side it came from — left edge, middle,
-right edge — which is how a table shows who fed a call.
+Turning the block turns the rows with it, which has a second effect worth having.
+Every seat is built the same way — river, then melds, then the hand — and once
+turned, each seat's discards land between that player and the centre, and their
+melds sit to their own right. Both are what a table does, and neither is
+expressible with one rule while the board is upright: the earlier version had to
+mirror the meld rule per seat and could not put the far seat's river where it
+belongs at all.
+
+Inside a seat's own frame every tile is therefore upright, and the only rotations
+left are the two that mean something at a table: the riichi declaration tile in a
+river, and the claimed tile in a meld — a quarter turn *relative to the owner*,
+which is a plain 90 once the block carries the orientation. The claimed tile also
+sits on the side it came from, which is how a table shows who fed a call.
+
+A CSS transform does not change an element's layout box, so a turned block would
+still reserve its unturned width. The side seats reserve the swapped box
+explicitly, from the same tile dimensions the rows inside are sized from.
 
 Footprints on the felt are reserved rather than fitted: a hand is 14 tiles wide
 while its owner holds a draw and 13 after discarding, a river grows from nothing
@@ -222,12 +233,12 @@ those to content made every control below the board jump on each step through a
 hand's history. The meld row was the least obvious of the three and the largest —
 it is rendered even when empty for exactly this reason.
 
-A turned tile occupies its face *height* across a row, so reserving the upright
-width is wrong by a third. Getting that wrong is not subtle in effect but is
-invisible in code review: the three-column table then does not fit its own
-container, and the whole document scrolls sideways on any window under 1000px.
 The single-column breakpoint is set to what the table actually needs, measured,
-rather than to a round number.
+rather than to a round number. Getting it wrong is invisible in code review and
+loud in a browser: too high and it hides a table that would have fitted, too low
+and the felt pushes the whole document sideways. Turning the blocks made the side
+columns as narrow as a seat is deep, so what now binds is the viewer's own
+14-tile hand across the bottom.
 
 Keyboard: <kbd>←</kbd>/<kbd>→</kbd> step through the hand, <kbd>Home</kbd> jumps
 to the deal, <kbd>End</kbd> returns to the decision, <kbd>Esc</kbd> or

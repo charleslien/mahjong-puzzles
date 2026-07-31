@@ -579,13 +579,31 @@ kbd {
   container-type: inline-size;
 }
 
+/* Tile dimensions the board's reservations are built from. An xs face is 18
+   wide and 24 tall; a turned one swaps the two. Naming them once means the
+   reserved footprints and the tiles themselves cannot disagree — and they only
+   have to agree because a wrong reservation is invisible until it makes the
+   whole document scroll sideways. */
+.board__felt {
+  --xs-w: calc(18px * var(--tile-scale));
+  --xs-h: calc(24px * var(--tile-scale));
+  /* An opponent's block: 14 hand tiles across, and a four-row river plus a meld
+     row plus the hand down, with the flex gaps between the three. */
+  --seat-w: calc(14 * var(--xs-w) + 26px);
+  --seat-h: calc(4 * var(--xs-h) + 6px + var(--xs-h) + var(--xs-h) + 0.7rem);
+}
+
 .board__felt {
   display: grid;
   grid-template-areas:
     'top    top     top'
     'left   centre  right'
     'bottom bottom  bottom';
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* The side columns are exactly as wide as a turned seat block; the centre
+     takes whatever is left. Sized as `1fr` they were three times wider than
+     their contents, which spread the table into a field with the players
+     stranded in the middle of their own halves. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.6rem;
   align-items: start;
   justify-items: center;
@@ -603,6 +621,58 @@ kbd {
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* One seat's felt: river, melds, hand — built the same way for everyone and then
+   turned to face its owner.
+
+   The turn has to be on the block rather than on each tile. Rotated tiles inside
+   an unrotated row point the right way but still run across the screen, so a
+   side seat's hand reads as tiles knocked over rather than as a hand seen from
+   the side.
+
+   A CSS transform does not change the layout box, so a block turned a quarter
+   would still reserve its unrotated width and overflow its column. The side
+   seats therefore reserve the block's size explicitly and swap the two axes on
+   the parent. `--seat-w` and `--seat-h` are built from the same tile dimensions
+   the rows inside are sized from, so the two cannot drift apart. */
+.board__seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.board__side--top .board__seat {
+  transform: rotate(180deg);
+}
+
+.board__side--left .board__seat,
+.board__side--right .board__seat {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--seat-w);
+  height: var(--seat-h);
+  justify-content: flex-start;
+}
+
+/* Facing right across the felt, so the top of the block points right. */
+.board__side--left .board__seat {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* And the mirror of it. */
+.board__side--right .board__seat {
+  transform: translate(-50%, -50%) rotate(270deg);
+}
+
+.board__side--left,
+.board__side--right {
+  position: relative;
+  /* The block's height becomes its width once turned, and the reverse. */
+  width: var(--seat-h);
+  height: var(--seat-w);
 }
 
 .board__side--top {
@@ -627,18 +697,13 @@ kbd {
   justify-content: center;
 }
 
-/* Melds sit at the outer corner of their owner's row rather than centred under
-   it. On a table a player's called sets are stacked to one side, and floating
-   them in the middle of the row made them read as part of the hand. Each seat
-   pushes toward the corner nearest it. */
-.board__melds--bottom,
-.board__melds--right {
+/* Melds sit to their owner's right, the side a table stacks called sets on,
+   rather than centred under the hand where they read as part of it. One rule for
+   all four seats now: each block is built in its owner's own frame and then
+   turned, so "the player's right" is the same edge for everyone. It used to be
+   mirrored per seat, which was the closest an unturned board could get. */
+.board__melds {
   justify-content: flex-end;
-}
-
-.board__melds--top,
-.board__melds--left {
-  justify-content: flex-start;
 }
 
 .board__melds {
@@ -671,16 +736,12 @@ kbd {
   min-width: calc(14 * 44px * var(--tile-scale) + 40px);
 }
 
-.board__hand--top {
-  min-width: calc(14 * 18px * var(--tile-scale) + 34px);
-}
-
-/* The side seats' tiles are turned a quarter, so each one occupies its face
-   *height* across the row — 24px for an xs tile, not 18. Reserving the upright
-   width let the row overflow its column the moment those seats were revealed. */
+/* Inside its own frame every opponent's hand is an ordinary upright row, so all
+   three reserve the same width; the side seats' frames are what get turned. */
+.board__hand--top,
 .board__hand--left,
 .board__hand--right {
-  min-width: calc(14 * 24px * var(--tile-scale) + 34px);
+  min-width: var(--seat-w);
 }
 
 .board__drawn {
@@ -703,17 +764,11 @@ kbd {
   min-width: calc(6 * 24px * var(--tile-scale) + 10px);
 }
 
-.board__river--top {
-  min-height: calc(4 * 24px * var(--tile-scale) + 6px);
-  min-width: calc(6 * 18px * var(--tile-scale) + 10px);
-}
-
-/* Turned a quarter, so the block's two dimensions swap: six columns of 24px
-   faces across, four rows of 18px down. */
+.board__river--top,
 .board__river--left,
 .board__river--right {
-  min-height: calc(4 * 18px * var(--tile-scale) + 6px);
-  min-width: calc(6 * 24px * var(--tile-scale) + 10px);
+  min-height: calc(4 * var(--xs-h) + 6px);
+  min-width: calc(6 * var(--xs-w) + 10px);
 }
 
 .plate {
@@ -778,6 +833,10 @@ kbd {
   padding: 0.5rem 0.85rem;
   background: rgba(0, 0, 0, 0.28);
   border-radius: 10px;
+  /* Centred in its row rather than pinned to the top of it. The row is as tall
+     as a side seat's turned block, so top-aligning left the round information
+     floating well above the middle of a table it is supposed to sit in. */
+  align-self: center;
   color: #fff;
   text-align: center;
 }
@@ -802,11 +861,13 @@ kbd {
 }
 
 /* Narrow screens: one column, opponents above, you at the bottom.
-   The threshold is what the three-column table actually needs — two side columns
-   of fourteen turned tiles plus the centre — not a round number. Set at 720 it
-   kept three columns at widths where they did not fit, and the felt pushed the
-   whole document sideways. */
-@container (max-width: 900px) {
+   The threshold is what the three-column table actually needs, measured, not a
+   round number — and turning each seat's block made it much less. The side
+   columns are now as narrow as a seat is deep, so what binds is the viewer's own
+   14-tile hand across the bottom, at roughly 690px. Set too high, this hid a
+   table that would have fitted; set too low, the felt pushed the whole document
+   sideways. */
+@container (max-width: 700px) {
   .board__felt {
     grid-template-areas:
       'top'
@@ -828,6 +889,31 @@ kbd {
   .board__hand--right {
     min-width: 0;
     max-width: 100%;
+  }
+
+  /* One column is a list of seats, not a table, so nothing is facing anything:
+     the blocks go back to upright rows in normal flow. Left turned and absolutely
+     positioned, a side seat would be a 278px-tall column stacked above the next
+     one, and its reserved box would no longer match what it draws — which is
+     what happened: the seats and the centre landed on top of each other.
+
+     Written against the same selectors as the rules above rather than the bare
+     `.board__seat`, because those are two classes deep and would otherwise win
+     regardless of order. */
+  .board__side--left,
+  .board__side--right {
+    position: static;
+    width: auto;
+    height: auto;
+  }
+
+  .board__side--top .board__seat,
+  .board__side--left .board__seat,
+  .board__side--right .board__seat {
+    position: static;
+    width: auto;
+    height: auto;
+    transform: none;
   }
 }
 
@@ -1772,8 +1858,12 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+/* Explicitly coloured. There is no global rule for `a`, so this fell back to the
+   browser's default link blue, which does not clear contrast against the dark
+   surface at this size. `--accent-strong` is the pair kept for exactly this. */
 .provenance__archive {
   margin-left: auto;
+  color: var(--accent-strong);
 }
 
 /* Tiles inside a choice button, and the word joining a call to the discard that
