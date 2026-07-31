@@ -12,6 +12,9 @@
   --text-muted: #626b78;
   --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.1);
+  /* For small text sitting on --accent-soft, where --accent itself is too light
+     to clear the contrast threshold. */
+  --accent-strong: #1a49b8;
   --accent-contrast: #ffffff;
 
   --grade-optimal: #12803c;
@@ -19,6 +22,16 @@
   --grade-inaccuracy: #a97400;
   --grade-mistake: #cc6a1f;
   --grade-blunder: #c0392b;
+
+  /* Darker variants for anything that carries white text on top. The shades
+     above are tuned to read as colour on a light surface, and several of them
+     fell below the WCAG AA contrast threshold once white text sat on them —
+     "Good" and "Mistake" worst. Bars and coloured text keep the originals. */
+  --grade-optimal-fill: #106b33;
+  --grade-good-fill: #1f7a3f;
+  --grade-inaccuracy-fill: #8a5f00;
+  --grade-mistake-fill: #a8521a;
+  --grade-blunder-fill: #a32c20;
 
   --felt: radial-gradient(ellipse at 50% 42%, #2f7a51 0%, #1f5a3a 72%, #17452d 100%);
   --felt-edge: #123524;
@@ -43,6 +56,7 @@
     --text-muted: #98a2b1;
     --accent: #5b93fb;
     --accent-soft: rgba(91, 147, 251, 0.16);
+    --accent-strong: #a8c6ff;
 
     --grade-optimal: #3fb950;
     --grade-good: #56b96b;
@@ -681,13 +695,25 @@ kbd {
   font-weight: 700;
 }
 
+/* The "you" marker on the viewer's plate. Dimming it far enough to read as
+   secondary took it under the contrast threshold against the accent background,
+   so it is distinguished by weight and size rather than by fading. */
 .plate__label {
-  opacity: 0.8;
+  opacity: 1;
+  font-size: 0.9em;
+  font-weight: 500;
 }
 
 .plate__score {
   font-family: var(--mono);
-  opacity: 0.9;
+  /* Was 0.9 opacity, which on the active seat's accent background fell below the
+     WCAG AA contrast threshold — a score is a number you have to read, not
+     decoration. Full opacity on the active plate. */
+  opacity: 0.85;
+}
+
+.plate--active .plate__score {
+  opacity: 1;
 }
 
 .plate__riichi {
@@ -912,11 +938,11 @@ kbd {
   color: #fff;
 }
 
-.feedback--optimal .feedback__head { background: var(--grade-optimal); }
-.feedback--good .feedback__head { background: var(--grade-good); }
-.feedback--inaccuracy .feedback__head { background: var(--grade-inaccuracy); }
-.feedback--mistake .feedback__head { background: var(--grade-mistake); }
-.feedback--blunder .feedback__head { background: var(--grade-blunder); }
+.feedback--optimal .feedback__head { background: var(--grade-optimal-fill); }
+.feedback--good .feedback__head { background: var(--grade-good-fill); }
+.feedback--inaccuracy .feedback__head { background: var(--grade-inaccuracy-fill); }
+.feedback--mistake .feedback__head { background: var(--grade-mistake-fill); }
+.feedback--blunder .feedback__head { background: var(--grade-blunder-fill); }
 
 .feedback__grade {
   font-weight: 700;
@@ -929,16 +955,19 @@ kbd {
   opacity: 0.92;
 }
 
-/* Pushed to the end so the way onward is always in the same place. */
+/* Pushed to the end so the way onward is always in the same place. Solid rather
+   than a translucent white: at 16% over the grade colour it was white-on-nearly-
+   white and failed contrast outright, on the one control every solver presses. */
 .feedback__head .button {
   margin-left: auto;
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
+  background: #fff;
+  border-color: transparent;
+  color: #1a1d21;
+  font-weight: 650;
 }
 
 .feedback__head .button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.26);
+  background: #f0f2f5;
   filter: none;
 }
 
@@ -1074,11 +1103,11 @@ kbd {
 
 .opt--header .opt__grade { background: none; color: inherit; }
 
-.opt__grade--optimal { background: var(--grade-optimal); }
-.opt__grade--good { background: var(--grade-good); }
-.opt__grade--inaccuracy { background: var(--grade-inaccuracy); }
-.opt__grade--mistake { background: var(--grade-mistake); }
-.opt__grade--blunder { background: var(--grade-blunder); }
+.opt__grade--optimal { background: var(--grade-optimal-fill); }
+.opt__grade--good { background: var(--grade-good-fill); }
+.opt__grade--inaccuracy { background: var(--grade-inaccuracy-fill); }
+.opt__grade--mistake { background: var(--grade-mistake-fill); }
+.opt__grade--blunder { background: var(--grade-blunder-fill); }
 
 .opt__ev,
 .opt__delta,
@@ -1338,11 +1367,11 @@ kbd {
   text-align: center;
 }
 
-.chip--optimal { background: var(--grade-optimal); }
-.chip--good { background: var(--grade-good); }
-.chip--inaccuracy { background: var(--grade-inaccuracy); }
-.chip--mistake { background: var(--grade-mistake); }
-.chip--blunder { background: var(--grade-blunder); }
+.chip--optimal { background: var(--grade-optimal-fill); }
+.chip--good { background: var(--grade-good-fill); }
+.chip--inaccuracy { background: var(--grade-inaccuracy-fill); }
+.chip--mistake { background: var(--grade-mistake-fill); }
+.chip--blunder { background: var(--grade-blunder-fill); }
 
 /* ---------------------------------------------------------------------------
    Prose
@@ -1467,4 +1496,16 @@ kbd {
 .choice__key {
   border-color: var(--border-strong);
   opacity: 0.75;
+}
+
+/* Which row was the solver's. This used to be carried by a sentence above the
+   table; with that gone the table has to say it itself. */
+.opt__you {
+  margin-left: 0.5rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--accent-strong);
+  vertical-align: 1px;
 }

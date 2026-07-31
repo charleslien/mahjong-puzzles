@@ -50,6 +50,7 @@ export function PuzzleView({
   onNext,
   index,
   total,
+  available,
   stats,
 }: {
   puzzle: Puzzle;
@@ -57,7 +58,10 @@ export function PuzzleView({
   onAnswer: (actionId: string) => void;
   onNext: () => void;
   index: number;
+  /** Puzzles in the current set. */
   total: number;
+  /** Puzzles matching the filters overall, when that is a larger number. */
+  available?: number;
   stats?: PuzzleStats;
 }) {
   const frames = useFrames(puzzle);
@@ -196,7 +200,18 @@ export function PuzzleView({
     <article className="puzzle">
       <header className="puzzle__head">
         <div className="puzzle__meta">
-          <span className="puzzle__counter">
+          {/* Position in this set, not in the bank. Sampling means a session
+              holds forty puzzles drawn from hundreds, so counting against the
+              bank total showed "1 of 740" over and over while the number you
+              were actually moving through stayed hidden. */}
+          <span
+            className="puzzle__counter"
+            title={
+              available && available > total
+                ? `${available.toLocaleString()} puzzles match your filters`
+                : undefined
+            }
+          >
             {index + 1} <span className="muted">of {total}</span>
           </span>
           {/* Tags carry the theme; the raw record id does not mean anything to a

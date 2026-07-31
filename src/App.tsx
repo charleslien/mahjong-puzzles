@@ -419,7 +419,8 @@ export default function App() {
                 onAnswer={onAnswer}
                 onNext={onNext}
                 index={linked ? 0 : cursor}
-                total={linked ? 1 : total}
+                total={linked ? 1 : session.length}
+                available={linked ? undefined : total}
                 stats={stats.get(current.id)}
               />
             ) : (

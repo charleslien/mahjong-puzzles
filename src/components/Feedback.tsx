@@ -83,7 +83,10 @@ function OptionRow({
         {action.tile ? <TileView tile={action.tile} size="sm" /> : null}
       </span>
 
-      <span className="opt__label">{action.label}</span>
+      <span className="opt__label">
+        {action.label}
+        {chosen && <span className="opt__you">yours</span>}
+      </span>
 
       <span className={`opt__grade opt__grade--${grade}`}>{GRADE_LABELS[grade]}</span>
 
@@ -137,7 +140,6 @@ export function Feedback({
   // Best first. `loss` is the gap to the best action, so ascending loss is
   // descending value.
   const ranked = [...puzzle.actions].sort((a, b) => a.loss - b.loss);
-  const alsoAccepted = puzzle.acceptedActionIds.length > 1;
   const acceptance = useAcceptance(puzzle);
   const showShanten = ranked.some((action) => action.shantenAfter !== undefined);
   const showUkeire = ranked.some((action) => typeof action.ukeire === 'number');
@@ -155,28 +157,11 @@ export function Feedback({
       </header>
 
       <div className="feedback__body">
-        <p className="feedback__line">
-          {!answer.correct && (
-            <>
-              You played <strong>{answer.action.label}</strong>. The best was{' '}
-              <strong>{answer.best.label}</strong>.
-            </>
-          )}
-          {answer.correct && alsoAccepted && (
-            <>
-              <strong>Correct.</strong> {puzzle.acceptedActionIds.length} answers tie here and yours
-              is one of them.
-            </>
-          )}
-          {answer.correct && !alsoAccepted && (
-            <>
-              <strong>Correct</strong>, and it was the only best answer.
-            </>
-          )}
-        </p>
-
-        {puzzle.explanation && <p className="feedback__why">{puzzle.explanation}</p>}
-
+        {/* No prose restating the table. "You played X, the best was Y" and the
+            sentence spelling out the same expected values were both saying what
+            the rows below already show — the grade, the points, the gap, and
+            which row was yours. The bank still carries the explanation; nothing
+            renders it. */}
         {stats && stats.games >= MIN_GAMES_TO_SHOW && stats.solveRate !== null && (
           <p className="feedback__crowd">
             {Math.round(stats.solveRate * 100)}% of solvers find this one, over {stats.games}{' '}
