@@ -129,7 +129,26 @@ index integrity.
       reads whatever `index.json` points at, and `evaluation.unit` is per puzzle,
       so both banks can coexist behind a picker whenever that is wanted.
 
-## 7. Remaining
+## 7. Done since
+
+- [x] **Riichi puzzles.** The declaration precedes its discard in mjai, which made
+      the declaring discard look forced (dropped by extract) *and* left the
+      declaration inside the prefix handed to akochan (which then offered nothing
+      to evaluate). Together those produced a bank whose answer was "stay
+      concealed" in all 13 cases — a finding about akochan that was entirely
+      self-inflicted. Fixed, and akochan now agrees with the houou player's
+      declaration in 16 of 18 cases.
+- [x] **Call puzzles.** Recovered by checking the rules against each seat's hand
+      at every discard, since declining leaves no trace. akochan already answers
+      at an opponent's discard, so the evaluator needed no work.
+- [x] **Glicko-2 difficulty**, validated against Glickman's published worked
+      example. `supabase/tests/glicko2.sql`.
+- [x] **Server-side sampling.** 5.7 MB of puzzle data per visit became 229 kB,
+      and bank size is no longer bounded by what a browser will download.
+- [x] **Answer balancing.** Calls came out 84% "pass"; capped at 60% so the bank
+      cannot be beaten by reflex.
+
+## 8. Remaining
 
 - [ ] **Post-call discards cannot be verified.** akochan evaluates when the seat
       draws, or when another seat discards or adds to a pon — a discard made
@@ -137,11 +156,12 @@ index integrity.
       nothing. ~6% of candidates are rejected as `no_akochan_decision_point`.
       Fixing it means finding an akochan entry point that accepts an arbitrary
       decision, or reconstructing the call as a `dahai` by the previous seat.
-- [ ] **Call and push/fold puzzle kinds are still unpopulated.** Declined calls
-      are invisible in mjai logs, so extract.py never sees them. akochan already
-      returns EVs for call options (they arrive with `tile: null` and are
-      currently discarded in `akochan._parse`), so the evaluator side is ready;
-      the gap is entirely in extraction.
+- [ ] **push/fold is still its own unpopulated kind.** In practice the decision
+      shows up inside discard puzzles — folding is simply a discard akochan
+      prices highly — so a separate kind may not be worth having. Decide before
+      building it.
+- [ ] **Call evaluation is slow.** akochan's fuuro search runs at roughly 0.7
+      positions/s against 5/s for a discard, which now dominates a pipeline run.
 - [ ] **Redact opponents' hands from shipped `history`.** Real logs carry every
       seat's tiles. The board never renders them before an answer, but they are in
       the JSON. Redaction has to keep tile *counts* intact or the replay cannot
