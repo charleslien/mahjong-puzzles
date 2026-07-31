@@ -1286,3 +1286,11 @@ kbd {
     font-size: 0.82rem;
   }
 }
+
+/* How everyone else did. Only rendered once there are enough attempts for the
+   figure to mean anything. */
+.feedback__crowd {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

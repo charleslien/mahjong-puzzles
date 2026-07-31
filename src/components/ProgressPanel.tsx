@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
+
 import { GRADE_LABELS, type Grade } from '../lib/grade';
+import { fetchMyRating, type PlayerRating } from '../lib/supabase';
 import { summarize, type Progress } from '../lib/progress';
 import type { Puzzle } from '../types/puzzle';
 
@@ -35,6 +38,17 @@ export function ProgressPanel({
   const summary = summarize(progress);
   const byId = new Map(puzzles.map((puzzle) => [puzzle.id, puzzle]));
 
+  // Only exists for a signed-in solver on a deployment with a database, and only
+  // after the rating batch has run, so its absence is the normal case.
+  const [rating, setRating] = useState<PlayerRating | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchMyRating()
+      .then((found) => { if (live) setRating(found); })
+      .catch(() => { /* a missing rating is not an error worth showing */ });
+    return () => { live = false; };
+  }, []);
+
   if (summary.attempted === 0) {
     return (
       <section className="panel panel--empty">
@@ -68,6 +82,13 @@ export function ProgressPanel({
             value={String(summary.currentStreak)}
             hint={`best ${summary.bestStreak}`}
           />
+          {rating && rating.games > 0 && (
+            <Stat
+              label="rating"
+              value={String(Math.round(rating.rating))}
+              hint={`± ${Math.round(rating.rd)} over ${rating.games}`}
+            />
+          )}
         </div>
 
         <ul className="gradebars">

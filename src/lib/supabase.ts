@@ -293,3 +293,61 @@ export async function fetchMyProgress(): Promise<RemoteProgress | null> {
   if (error) throw new Error(`my_progress: ${error.message}`);
   return (data as RemoteProgress) ?? null;
 }
+
+// -- community difficulty ----------------------------------------------------
+
+export interface PuzzleStats {
+  puzzleId: string;
+  rating: number;
+  rd: number;
+  games: number;
+  solveRate: number | null;
+}
+
+/**
+ * Learned difficulty per puzzle, from real solve attempts.
+ *
+ * Absent for a static deployment, and empty until people have played, so every
+ * caller has to cope with having none — the offline estimate remains the
+ * fallback rather than the exception.
+ */
+export async function fetchPuzzleStats(): Promise<Map<string, PuzzleStats>> {
+  const out = new Map<string, PuzzleStats>();
+  if (!isConfigured()) return out;
+  const db = await supabase();
+  const { data, error } = await db
+    .from('puzzle_difficulty')
+    .select('puzzle_id,rating,rd,games,solve_rate')
+    .gt('games', 0);
+  if (error) throw new Error(`puzzle_difficulty: ${error.message}`);
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    out.set(row.puzzle_id as string, {
+      puzzleId: row.puzzle_id as string,
+      rating: Number(row.rating),
+      rd: Number(row.rd),
+      games: Number(row.games),
+      solveRate: row.solve_rate === null ? null : Number(row.solve_rate),
+    });
+  }
+  return out;
+}
+
+export interface PlayerRating {
+  rating: number;
+  rd: number;
+  games: number;
+}
+
+export async function fetchMyRating(): Promise<PlayerRating | null> {
+  const session = await currentSession();
+  if (!session) return null;
+  const db = await supabase();
+  const { data, error } = await db
+    .from('player_ratings')
+    .select('rating,rd,games')
+    .maybeSingle();
+  if (error) throw new Error(`player_ratings: ${error.message}`);
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  return { rating: Number(row.rating), rd: Number(row.rd), games: Number(row.games) };
+}

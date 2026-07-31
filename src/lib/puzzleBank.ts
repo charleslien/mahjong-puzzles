@@ -12,7 +12,7 @@
  */
 
 import { SCHEMA_VERSION, type Puzzle, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
-import { fetchBankMeta, fetchPuzzles, puzzleSource } from './supabase';
+import { fetchBankMeta, fetchPuzzleStats, fetchPuzzles, puzzleSource, type PuzzleStats } from './supabase';
 
 function bankUrl(path: string): string {
   // BASE_URL already carries a trailing slash under Vite.
@@ -34,6 +34,13 @@ async function fetchJson<T>(path: string): Promise<T> {
 export interface LoadedBank {
   index: PuzzleIndex;
   puzzles: Puzzle[];
+  /**
+   * Difficulty learned from real attempts, keyed by puzzle id.
+   *
+   * Empty for a static deployment and until people have played, so callers must
+   * treat its absence as normal rather than as an error.
+   */
+  stats: Map<string, PuzzleStats>;
 }
 
 let cached: Promise<LoadedBank> | undefined;
@@ -48,7 +55,7 @@ async function loadStaticBank(): Promise<LoadedBank> {
 
   const shards = await Promise.all(index.shards.map((shard) => fetchJson<PuzzleShard>(shard.file)));
   const puzzles = shards.flatMap((shard) => shard.puzzles);
-  return { index, puzzles };
+  return { index, puzzles, stats: new Map() };
 }
 
 async function loadSupabaseBank(): Promise<LoadedBank> {
@@ -69,7 +76,9 @@ async function loadSupabaseBank(): Promise<LoadedBank> {
     // The database is not sharded; the field exists for the static bank's sake.
     shards: [],
   };
-  return { index, puzzles };
+  // Community difficulty is a bonus, never a reason to fail the load.
+  const stats = await fetchPuzzleStats().catch(() => new Map<string, PuzzleStats>());
+  return { index, puzzles, stats };
 }
 
 export function loadBank(): Promise<LoadedBank> {

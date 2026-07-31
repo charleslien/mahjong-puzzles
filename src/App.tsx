@@ -250,6 +250,7 @@ export default function App() {
                 onNext={onNext}
                 index={linked ? 0 : cursor}
                 total={linked ? 1 : session.length}
+                stats={bank.stats.get(current.id)}
               />
             ) : (
               <section className="panel">

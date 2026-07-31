@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GradedAnswer } from '../lib/grade';
 import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay';
 import type { Tile } from '../lib/tiles';
+import type { PuzzleStats } from '../lib/supabase';
 import type { Puzzle } from '../types/puzzle';
 import { Feedback } from './Feedback';
 import { GameBoard } from './GameBoard';
@@ -49,6 +50,7 @@ export function PuzzleView({
   onNext,
   index,
   total,
+  stats,
 }: {
   puzzle: Puzzle;
   answer?: GradedAnswer;
@@ -56,6 +58,7 @@ export function PuzzleView({
   onNext: () => void;
   index: number;
   total: number;
+  stats?: PuzzleStats;
 }) {
   const frames = useFrames(puzzle);
   const decisionFrame = frames.length - 1;
@@ -292,7 +295,7 @@ export function PuzzleView({
         </section>
       )}
 
-      {answer && <Feedback puzzle={puzzle} answer={answer} onNext={onNext} />}
+      {answer && <Feedback puzzle={puzzle} answer={answer} stats={stats} onNext={onNext} />}
     </article>
   );
 }

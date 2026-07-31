@@ -1,4 +1,5 @@
 import { GRADE_LABELS, describeLoss, formatLoss, type GradedAnswer } from '../lib/grade';
+import type { PuzzleStats } from '../lib/supabase';
 import type { Puzzle } from '../types/puzzle';
 import { TileView } from './TileView';
 
@@ -76,13 +77,21 @@ function judgeName(id: string): string {
   return JUDGE_NAMES[id] ?? id;
 }
 
+/**
+ * Below this many first attempts a solve rate is noise dressed as a statistic.
+ * Two people getting it right does not make a puzzle easy.
+ */
+const MIN_GAMES_TO_SHOW = 8;
+
 export function Feedback({
   puzzle,
   answer,
+  stats,
   onNext,
 }: {
   puzzle: Puzzle;
   answer: GradedAnswer;
+  stats?: PuzzleStats;
   onNext: () => void;
 }) {
   const unit = puzzle.evaluation.unit;
@@ -125,6 +134,13 @@ export function Feedback({
         </p>
 
         {puzzle.explanation && <p className="feedback__why">{puzzle.explanation}</p>}
+
+        {stats && stats.games >= MIN_GAMES_TO_SHOW && stats.solveRate !== null && (
+          <p className="feedback__crowd">
+            {Math.round(stats.solveRate * 100)}% of solvers find this one, over {stats.games}{' '}
+            attempts.
+          </p>
+        )}
 
         <ul className="optionlist">
           {ranked.map((action) => (
