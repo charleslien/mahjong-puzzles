@@ -972,80 +972,212 @@ kbd {
 /* ---------------------------------------------------------------------------
    Option breakdown
 
-   Deliberately no bars. Each row previously carried a full-width acceptance bar
-   and a greyed-out tile, which dominated the panel while answering a question
-   most solvers were not asking. What is left is the tile, what it costs, and
-   whether it was yours; acceptance and policy live in the row's tooltip.
+   A real grid, so every figure lines up down its own column. This was a flex row
+   per option with everything pushed to the right by a spacer, which left a lane
+   of empty space through the middle and no vertical alignment between rows —
+   comparing two discards meant reading two sentences rather than scanning a
+   column.
+
+   No bars. Each row used to carry a full-width acceptance bar and a greyed-out
+   tile, which dominated the panel while answering a question most solvers were
+   not asking.
    --------------------------------------------------------------------------- */
 
 .optionlist {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  /* Not `overflow: hidden`, which would clip the acceptance popover to the row
+     it belongs to. The corners are rounded on the first and last rows instead. */
+  overflow: visible;
 }
 
-.option {
-  display: flex;
+.optionlist .opt:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+}
+
+.optionlist .opt:last-child {
+  border-bottom-left-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.opt {
+  display: grid;
+  grid-template-columns:
+    calc(24px * var(--tile-scale))   /* tile      */
+    minmax(0, 1fr)                   /* label     */
+    5.6rem                           /* grade     */
+    4.6rem                           /* points    */
+    4.4rem                           /* vs best   */
+    5.4rem                           /* shanten   */
+    3.2rem;                          /* draws     */
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.35rem 0.7rem;
+  gap: 0.6rem;
+  padding: 0.3rem 0.7rem;
   border-left: 3px solid transparent;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
-.option + .option {
+.optionlist--no-shanten .opt { grid-template-columns: calc(24px * var(--tile-scale)) minmax(0,1fr) 5.6rem 4.6rem 4.4rem 0 3.2rem; }
+.optionlist--no-ukeire .opt { grid-template-columns: calc(24px * var(--tile-scale)) minmax(0,1fr) 5.6rem 4.6rem 4.4rem 5.4rem 0; }
+.optionlist--no-shanten.optionlist--no-ukeire .opt {
+  grid-template-columns: calc(24px * var(--tile-scale)) minmax(0,1fr) 5.6rem 4.6rem 4.4rem 0 0;
+}
+
+.opt + .opt {
   border-top: 1px solid var(--border);
 }
 
-.option--best {
+/* Column headings, so "points" and "vs best" do not have to be inferred. */
+.opt--header {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.opt--best {
   border-left-color: var(--grade-optimal);
   background: rgba(18, 128, 60, 0.06);
 }
 
-.option--chosen {
+.opt--chosen {
   background: var(--accent-soft);
 }
 
-.option--best.option--chosen {
+.opt--best.opt--chosen {
   background: rgba(18, 128, 60, 0.12);
 }
 
-.option__nontile {
-  width: calc(24px * var(--tile-scale));
-}
-
-.option__label {
-  flex: 1;
-  min-width: 0;
+.opt__label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.option__cost {
+.opt__grade {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.1rem 0;
+  color: #fff;
+}
+
+.opt--header .opt__grade { background: none; color: inherit; }
+
+.opt__grade--optimal { background: var(--grade-optimal); }
+.opt__grade--good { background: var(--grade-good); }
+.opt__grade--inaccuracy { background: var(--grade-inaccuracy); }
+.opt__grade--mistake { background: var(--grade-mistake); }
+.opt__grade--blunder { background: var(--grade-blunder); }
+
+.opt__ev,
+.opt__delta,
+.opt__shanten,
+.opt__ukeire {
   font-family: var(--mono);
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--text-muted);
   white-space: nowrap;
 }
 
-.option--best .option__cost {
+.opt--header .opt__ev,
+.opt--header .opt__delta,
+.opt--header .opt__shanten,
+.opt--header .opt__ukeire {
+  font-family: inherit;
+}
+
+/* The value is the answer; it reads as body text rather than as an aside. */
+.opt__ev {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.opt--best .opt__ev {
   color: var(--grade-optimal);
   font-weight: 700;
 }
 
-.option__yours {
+.opt__shanten {
+  text-align: left;
+}
+
+/* Acceptance detail, on hover or focus. */
+.opt__ukeire {
+  position: relative;
+  cursor: help;
+  text-decoration: underline dotted var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+.opt__ukeire:hover,
+.opt__ukeire:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+/* Below the figure, not above it: opening upward covered the column headings for
+   the top rows, which are the ones most likely to be inspected. */
+.accept {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 0.5rem 0.6rem;
+  width: max-content;
+  max-width: 22rem;
+  white-space: normal;
+}
+
+.opt__ukeire:hover .accept,
+.opt__ukeire:focus-visible .accept {
+  display: block;
+}
+
+.accept__title {
+  display: block;
+  font-family: var(--font);
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 700;
-  color: var(--accent);
-  white-space: nowrap;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.accept__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.accept__tile {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* How many of that tile are still unseen. */
+.accept__count {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 .provenance {
@@ -1282,8 +1414,19 @@ kbd {
     gap: 1.25rem;
   }
 
-  .option__label {
+  /* Below this width the grade chip and the acceptance column are the first
+     things to go: the label, the value and the gap to best are what a solver is
+     actually comparing. */
+  .opt {
+    grid-template-columns: calc(24px * var(--tile-scale)) minmax(0, 1fr) 4.4rem 4.2rem;
     font-size: 0.82rem;
+    gap: 0.4rem;
+  }
+
+  .opt__grade,
+  .opt__shanten,
+  .opt__ukeire {
+    display: none;
   }
 }
 

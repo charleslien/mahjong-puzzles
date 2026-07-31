@@ -1,87 +1,126 @@
-import { GRADE_LABELS, describeLoss, formatLoss, type GradedAnswer } from '../lib/grade';
+import { useMemo } from 'react';
+
+import { analyzePosition, visibleCounts } from '../lib/analyzePosition';
+import { GRADE_LABELS, formatLoss, gradeForLoss, type GradedAnswer } from '../lib/grade';
 import type { PuzzleStats } from '../lib/supabase';
+import { tileToIndex, type Tile } from '../lib/tiles';
 import type { Puzzle } from '../types/puzzle';
 import { TileView } from './TileView';
-
-/**
- * One option in the breakdown.
- *
- * This used to draw a long acceptance bar per row and grey out the tile. Both
- * went: the bars dominated the panel while encoding a quantity most solvers were
- * not asking about, and a greyed tile is harder to identify than a normal one
- * for no gain, since the row already says what happens if you pick it.
- *
- * What remains is what a solver actually reads: the tile, what it costs, and
- * whether it was theirs. Acceptance and the policy figure move to a title
- * attribute — available on hover, absent from the scan.
- */
-function EvalRow({
-  puzzle,
-  action,
-  chosen,
-}: {
-  puzzle: Puzzle;
-  action: Puzzle['actions'][number];
-  chosen: boolean;
-}) {
-  const unit = puzzle.evaluation.unit;
-  const detail = [
-    typeof action.ukeire === 'number' ? `${action.ukeire} tiles of acceptance` : undefined,
-    typeof action.policy === 'number'
-      ? `${Math.round(action.policy * 100)}% of houou players`
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-
-  return (
-    <li
-      className={[
-        'option',
-        action.accepted ? 'option--best' : '',
-        chosen ? 'option--chosen' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      title={detail || undefined}
-    >
-      {action.tile ? (
-        <TileView tile={action.tile} size="sm" />
-      ) : (
-        <span className="option__nontile" aria-hidden="true" />
-      )}
-
-      <span className="option__label">{action.label}</span>
-
-      <span className="option__cost">
-        {action.accepted ? 'best' : describeLoss(action, unit, puzzle.bestShanten)}
-      </span>
-
-      {chosen && <span className="option__yours">yours</span>}
-    </li>
-  );
-}
-
-/**
- * Evaluator ids are pipeline identifiers. Shown raw they read as jargon —
- * "offline-model" tells a solver nothing about who judged their answer.
- */
-const JUDGE_NAMES: Record<string, string> = {
-  akochan: 'the akochan engine',
-  'offline-model': 'a network trained on 20M houou decisions',
-  'houou-player': 'the houou player who was there',
-  'ukeire-baseline': 'tile-efficiency counting',
-};
-
-function judgeName(id: string): string {
-  return JUDGE_NAMES[id] ?? id;
-}
 
 /**
  * Below this many first attempts a solve rate is noise dressed as a statistic.
  * Two people getting it right does not make a puzzle easy.
  */
 const MIN_GAMES_TO_SHOW = 8;
+
+interface Acceptance {
+  tiles: Tile[];
+  /** How many of each acceptance tile are still unseen. */
+  remaining: Map<Tile, number>;
+}
+
+/**
+ * Which tiles each discard would accept, and how many of each are left.
+ *
+ * Computed here rather than shipped with the puzzle. The bank stores the
+ * acceptance *count* per discard but not the tiles behind it, and recomputing in
+ * the browser costs nothing, needs no regeneration, and uses the same
+ * implementation the bank was built with.
+ */
+function useAcceptance(puzzle: Puzzle): Map<string, Acceptance> {
+  return useMemo(() => {
+    const out = new Map<string, Acceptance>();
+    if (puzzle.kind !== 'discard') return out;
+
+    const analysis = analyzePosition(puzzle.position);
+    if (!analysis) return out;
+    const visible = visibleCounts(puzzle.position);
+
+    for (const option of analysis.options) {
+      const remaining = new Map<Tile, number>();
+      for (const tile of option.acceptedTiles) {
+        remaining.set(tile, Math.max(0, 4 - visible[tileToIndex(tile)]));
+      }
+      // Keyed by tile index so a red five finds its plain twin's entry.
+      out.set(String(tileToIndex(option.tile)), { tiles: option.acceptedTiles, remaining });
+    }
+    return out;
+  }, [puzzle]);
+}
+
+function shantenLabel(shanten: number | undefined): string {
+  if (shanten === undefined) return '';
+  if (shanten < 0) return 'won';
+  return shanten === 0 ? 'tenpai' : `${shanten}-shanten`;
+}
+
+function OptionRow({
+  puzzle,
+  action,
+  chosen,
+  acceptance,
+}: {
+  puzzle: Puzzle;
+  action: Puzzle['actions'][number];
+  chosen: boolean;
+  acceptance?: Acceptance;
+}) {
+  const unit = puzzle.evaluation.unit;
+  const grade = gradeForLoss(action.loss, action.accepted, unit);
+
+  return (
+    <li
+      className={[
+        'opt',
+        `opt--${grade}`,
+        action.accepted ? 'opt--best' : '',
+        chosen ? 'opt--chosen' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <span className="opt__tile">
+        {action.tile ? <TileView tile={action.tile} size="sm" /> : null}
+      </span>
+
+      <span className="opt__label">{action.label}</span>
+
+      <span className={`opt__grade opt__grade--${grade}`}>{GRADE_LABELS[grade]}</span>
+
+      {/* The expected value itself, on every row including the best one — the
+          number is the point of the exercise, and hiding it behind the word
+          "best" made the top line the only one you could not read. */}
+      <span className="opt__ev">{action.ev >= 0 ? `+${action.ev.toFixed(2)}` : action.ev.toFixed(2)}</span>
+
+      <span className="opt__delta">
+        {action.loss > 0 ? `−${action.loss.toFixed(2)}` : '—'}
+      </span>
+
+      <span className="opt__shanten">{shantenLabel(action.shantenAfter)}</span>
+
+      {typeof action.ukeire === 'number' ? (
+        <span className="opt__ukeire" tabIndex={0}>
+          {action.ukeire}
+          {acceptance && acceptance.tiles.length > 0 && (
+            <span className="accept" role="tooltip">
+              <span className="accept__title">Draws that improve the hand</span>
+              <span className="accept__tiles">
+                {acceptance.tiles.map((tile) => (
+                  <span className="accept__tile" key={tile}>
+                    <TileView tile={tile} size="xs" />
+                    <span className="accept__count">{acceptance.remaining.get(tile) ?? 0}</span>
+                  </span>
+                ))}
+              </span>
+            </span>
+          )}
+        </span>
+      ) : (
+        <span className="opt__ukeire" />
+      )}
+    </li>
+  );
+}
 
 export function Feedback({
   puzzle,
@@ -95,17 +134,20 @@ export function Feedback({
   onNext: () => void;
 }) {
   const unit = puzzle.evaluation.unit;
+  // Best first. `loss` is the gap to the best action, so ascending loss is
+  // descending value.
   const ranked = [...puzzle.actions].sort((a, b) => a.loss - b.loss);
   const alsoAccepted = puzzle.acceptedActionIds.length > 1;
+  const acceptance = useAcceptance(puzzle);
+  const showShanten = ranked.some((action) => action.shantenAfter !== undefined);
+  const showUkeire = ranked.some((action) => typeof action.ukeire === 'number');
 
   return (
     <section className={`feedback feedback--${answer.grade}`} aria-live="polite">
       <header className="feedback__head">
         <span className="feedback__grade">{GRADE_LABELS[answer.grade]}</span>
         {!answer.correct && (
-          <span className="feedback__loss">
-            {describeLoss(answer.action, unit, puzzle.bestShanten)}
-          </span>
+          <span className="feedback__loss">{formatLoss(answer.action.loss, unit)}</span>
         )}
         <button type="button" className="button button--primary" onClick={onNext} autoFocus>
           Next
@@ -142,30 +184,36 @@ export function Feedback({
           </p>
         )}
 
-        <ul className="optionlist">
+        <ul
+          className={[
+            'optionlist',
+            showShanten ? '' : 'optionlist--no-shanten',
+            showUkeire ? '' : 'optionlist--no-ukeire',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <li className="opt opt--header" aria-hidden="true">
+            <span className="opt__tile" />
+            <span className="opt__label">Option</span>
+            <span className="opt__grade" />
+            <span className="opt__ev">points</span>
+            <span className="opt__delta">vs best</span>
+            <span className="opt__shanten">{showShanten ? 'after' : ''}</span>
+            <span className="opt__ukeire">{showUkeire ? 'draws' : ''}</span>
+          </li>
           {ranked.map((action) => (
-            <EvalRow
+            <OptionRow
               key={action.id}
               puzzle={puzzle}
               action={action}
               chosen={action.id === answer.action.id}
+              acceptance={
+                action.tile ? acceptance.get(String(tileToIndex(action.tile))) : undefined
+              }
             />
           ))}
         </ul>
-
-        <details className="feedback__provenance">
-          <summary>Where this answer comes from</summary>
-          <dl className="provenance">
-            <dt>Judged by</dt>
-            <dd>{puzzle.evaluation.evaluators.map(judgeName).join(', agreed by ')}</dd>
-            <dt>Measured in</dt>
-            <dd>{unit === 'ukeire_tiles' ? 'tiles of acceptance' : 'expected placement points'}</dd>
-            <dt>Lead over the next answer</dt>
-            <dd>{formatLoss(puzzle.evaluation.margin, unit).replace('−', '')}</dd>
-            <dt>Both judges agreed</dt>
-            <dd>{puzzle.evaluation.agreement ? 'yes' : 'not corroborated'}</dd>
-          </dl>
-        </details>
       </div>
     </section>
   );
