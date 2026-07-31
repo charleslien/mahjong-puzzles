@@ -947,12 +947,19 @@ kbd {
    Feedback
    --------------------------------------------------------------------------- */
 
+/* Not `overflow: hidden`, which clipped the acceptance popover at the panel's
+   edge — the bottom rows' popovers were cut in half. The coloured header keeps
+   the top corners rounded on its own. */
 .feedback {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overflow: hidden;
+}
+
+.feedback__head {
+  border-top-left-radius: var(--radius);
+  border-top-right-radius: var(--radius);
 }
 
 .feedback__head {
@@ -1186,8 +1193,9 @@ kbd {
   outline: none;
 }
 
-/* Below the figure, not above it: opening upward covered the column headings for
-   the top rows, which are the ones most likely to be inspected. */
+/* Below the figure by default: opening upward covered the column headings for
+   the top rows, which are the ones most likely to be inspected. The last few
+   rows flip back above, because below them is the end of the panel. */
 .accept {
   display: none;
   position: absolute;
@@ -1643,6 +1651,12 @@ kbd {
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
+}
+
+/* The bottom rows have nothing below them to open into. */
+.opt:nth-last-child(-n + 3) .accept {
+  top: auto;
+  bottom: calc(100% + 0.35rem);
 }
 
 /* When every option reduces to the same word, the label column carries nothing
