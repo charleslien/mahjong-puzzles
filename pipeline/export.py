@@ -268,6 +268,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--output", required=True, help="output directory for the bank")
     parser.add_argument("--shard-size", type=int, default=DEFAULT_SHARD_SIZE)
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help=(
+            "cap the published bank at N puzzles, sampled evenly. The database "
+            "serves a page per session so its size is free, but public/puzzles is "
+            "the offline fallback and is loaded whole — and it lives in git. "
+            "Verified puzzles beyond the cap stay in the verified JSONL for a "
+            "later run rather than being thrown away."
+        ),
+    )
+    parser.add_argument(
         "--generated-at",
         required=True,
         help="date stamp recorded in the index, e.g. 2026-07-29",
@@ -275,6 +287,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     candidates = balance_by_answer(list(read_candidates(args.input)))
+
+    if args.limit and len(candidates) > args.limit:
+        # Evenly spaced, so the cap keeps the spread of rounds, kinds and
+        # difficulty rather than taking whatever happens to be at the front.
+        stride = len(candidates) / args.limit
+        kept = [candidates[int(i * stride)] for i in range(args.limit)]
+        sys.stderr.write(
+            "capping {} puzzles to {}\n".format(len(candidates), len(kept))
+        )
+        candidates = kept
     puzzles = [
         to_puzzle(candidate, "mined-{:05d}".format(i + 1))
         for i, candidate in enumerate(candidates)

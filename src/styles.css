@@ -1154,10 +1154,14 @@ kbd {
   text-align: left;
 }
 
-/* Acceptance detail, on hover or focus. */
+/* Acceptance detail, on hover or focus.
+   Padded out so the whole cell is the target rather than the two or three
+   characters of the number itself, which was easy to miss entirely. */
 .opt__ukeire {
   position: relative;
   cursor: help;
+  padding: 0.35rem 0.2rem;
+  margin: -0.35rem -0.2rem;
   text-decoration: underline dotted var(--border-strong);
   text-underline-offset: 3px;
 }

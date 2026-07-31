@@ -18,7 +18,18 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const BANK_DIR = join(process.cwd(), 'public', 'puzzles');
+/**
+ * Which bank to upload.
+ *
+ * Defaults to the bundled one, but the pipeline points this at the *full* export.
+ * The database serves a page per session so its size costs nothing, while
+ * public/puzzles is the offline fallback: it is downloaded whole and it lives in
+ * git, so it is deliberately capped. The two are not expected to match in size —
+ * only in content, with the bundle a subset.
+ */
+const bankArg = process.argv.indexOf('--bank');
+const BANK_DIR =
+  bankArg >= 0 ? join(process.cwd(), process.argv[bankArg + 1]) : join(process.cwd(), 'public', 'puzzles');
 const BATCH = 100;
 
 const url = process.env.VITE_SUPABASE_URL;

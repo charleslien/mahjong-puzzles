@@ -129,10 +129,10 @@ def build_actions(
     annotations = candidate.get("ukeireActions") or {}
     policy = candidate.get("policy") or {}
 
-    # akochan names the tile it would discard; the annotation is keyed by the
-    # hand tile. Match through the normalised form so a red five lines up.
-    by_normalised = {_normalise_id(key): (key, value) for key, value in annotations.items()}
-
+    # Matched exactly, not through a red-five-collapsing normal form. akochan
+    # prices `discard:5p` and `discard:5pr` separately — the red one is a dora,
+    # and in one sampled position the gap was 1.59 placement points — so merging
+    # them dropped a real play from every hand holding both copies.
     actions: List[Dict[str, Any]] = []
     seen = set()
     for entry in akochan_ranked:
@@ -140,27 +140,28 @@ def build_actions(
             # Non-discard options (riichi declarations, calls, tsumo) carry an EV
             # but no tile. Out of scope for a discard puzzle.
             continue
-        key = _normalise_id(entry["id"])
+        key = entry["id"]
         if key in seen:
             continue
-        match = by_normalised.get(key)
-        if match is None:
-            raise Rejection("akochan_action_not_in_hand:{}".format(entry["id"]))
+        annotation = annotations.get(key)
+        if annotation is None:
+            raise Rejection("akochan_action_not_in_hand:{}".format(key))
         seen.add(key)
-        annotation_id, annotation = match
         actions.append(
             {
-                "id": annotation_id,
+                "id": key,
                 "label": annotation["label"],
                 "tile": annotation["tile"],
                 "ev": entry["ev"],
                 "shantenAfter": annotation["shantenAfter"],
                 "ukeire": annotation["ukeire"],
-                "policy": policy.get(annotation_id, policy.get(entry["id"])),
+                # The network's action space is 34 tile indices, so its
+                # probability is for the tile type, shared by both copies.
+                "policy": policy.get(_normalise_id(key)) or policy.get(key),
             }
         )
 
-    missing = set(by_normalised) - seen
+    missing = set(annotations) - seen
     if missing:
         raise Rejection("akochan_missing_actions:{}".format(len(missing)))
     if len(actions) < 2:
@@ -398,9 +399,12 @@ def verify_candidate(
     else:
         kind = candidate.get("kind", "discard")
         actions = build_actions(ranked, candidate)
+        # Compared in normalised form. The network ranks 34 tile *indices* and
+        # cannot express "the red one", so asking it to agree about which copy of
+        # a five to discard would manufacture disagreements it has no view on.
         rankings = [
-            [action["id"] for action in actions],  # akochan, already EV-sorted
-            model_ranking(candidate, actions),
+            [_normalise_id(action["id"]) for action in actions],  # akochan, EV-sorted
+            [_normalise_id(action_id) for action_id in model_ranking(candidate, actions)],
         ]
         evaluators = EVALUATORS
 

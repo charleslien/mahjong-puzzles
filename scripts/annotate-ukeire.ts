@@ -95,15 +95,28 @@ async function main(): Promise<number> {
 
     const { options, bestShanten, bestUkeire, resolveHandTile } = analysis;
 
+    // One entry per tile the hand actually holds, not per tile *index*.
+    // Acceptance is computed over 34 indices, which merges a red five with its
+    // plain twin — but discarding the red one gives away a dora, and akochan
+    // prices the two differently. Collapsing them meant that in every hand
+    // holding both copies, one of the two plays was silently missing.
+    const held = new Set(candidate.position.hand);
     const perAction: Record<string, ActionAnnotation> = {};
     for (const option of options) {
-      const tile = resolveHandTile(option.tile);
-      perAction[`discard:${tile}`] = {
-        label: `Discard ${tileLabel(tile)}`,
-        tile,
-        shantenAfter: option.shantenAfter,
-        ukeire: option.ukeire,
-      };
+      const canonical = resolveHandTile(option.tile);
+      const variants = [canonical, `${canonical}r`, canonical.replace(/r$/, '')].filter(
+        (tile, index, all) => held.has(tile as never) && all.indexOf(tile) === index,
+      );
+      for (const tile of variants.length ? variants : [canonical]) {
+        perAction[`discard:${tile}`] = {
+          // Shanten and acceptance are properties of the tile *index*, so both
+          // copies share them; only the expected value differs.
+          label: `Discard ${tileLabel(tile as never)}`,
+          tile,
+          shantenAfter: option.shantenAfter,
+          ukeire: option.ukeire,
+        };
+      }
     }
 
     // What pure efficiency would play: best shanten, and nothing accepts more.

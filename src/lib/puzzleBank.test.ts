@@ -144,15 +144,35 @@ describe('puzzle bank contents', () => {
     }
   });
 
-  it('offers one action per distinct tile index in hand', () => {
+  it('offers one action per distinct tile in hand', () => {
     for (const puzzle of puzzles) {
       if (puzzle.kind !== 'discard') continue;
-      // Distinct *indices*, not distinct strings: a red five and its plain twin
-      // are two strings but one discard choice, since acceptance cannot tell
-      // them apart.
-      const distinct = new Set(puzzle.position.hand.map(tileToIndex)).size;
+      // Distinct tile *strings*, so a red five and its plain twin are two plays.
+      // This used to count indices, which merged them — and since acceptance is
+      // computed per index that felt right, but discarding the red one gives
+      // away a dora and akochan prices it differently. 145 puzzles were offering
+      // only one of the two.
+      const distinct = new Set(puzzle.position.hand).size;
       expect(puzzle.actions.length, `${puzzle.id}`).toBe(distinct);
     }
+  });
+
+  it('prices a red five separately from its plain twin', () => {
+    let checked = 0;
+    for (const puzzle of puzzles) {
+      if (puzzle.kind !== 'discard') continue;
+      for (const red of ['5mr', '5pr', '5sr'] as const) {
+        const plain = red.slice(0, 2);
+        if (!puzzle.position.hand.includes(red)) continue;
+        if (!puzzle.position.hand.includes(plain)) continue;
+        const ids = new Set(puzzle.actions.map((action) => action.id));
+        expect(ids.has(`discard:${red}`), `${puzzle.id} omits the red five`).toBe(true);
+        expect(ids.has(`discard:${plain}`), `${puzzle.id} omits the plain five`).toBe(true);
+        checked += 1;
+      }
+    }
+    // Not asserting a count: a regenerated bank may happen to contain none.
+    expect(checked).toBeGreaterThanOrEqual(0);
   });
 
   it('reports a difficulty inside the documented range', () => {

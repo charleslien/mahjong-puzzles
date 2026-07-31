@@ -70,10 +70,20 @@ echo "==> 4/5 verify with akochan"
   --logs "$LOGS" --akochan "$AKOCHAN" \
   --reject-log "$WORK/rejects.jsonl" --progress-every 250
 
-echo "==> 5/5 export"
+# Two banks, deliberately different sizes. The database gets everything, since
+# it serves a page per session and its size is free. public/puzzles is the
+# offline fallback — downloaded whole, and committed — so it is capped.
+FALLBACK_SIZE="${FALLBACK_SIZE:-1200}"
+
+echo "==> 5/6 export (full bank for the database)"
+"$PYTHON" -m pipeline.export \
+  --input "$WORK/verified.jsonl" --output "$WORK/bank" \
+  --generated-at "$(date +%Y-%m-%d)"
+
+echo "==> 5b/6 export (capped bundle for the offline fallback)"
 "$PYTHON" -m pipeline.export \
   --input "$WORK/verified.jsonl" --output public/puzzles \
-  --generated-at "$(date +%Y-%m-%d)"
+  --limit "$FALLBACK_SIZE" --generated-at "$(date +%Y-%m-%d)"
 
 # The site reads the database when VITE_PUZZLE_SOURCE=supabase, so regenerating
 # the JSON without uploading leaves it serving the previous bank. That is not a
@@ -81,7 +91,7 @@ echo "==> 5/5 export"
 # so the upload belongs in the pipeline rather than in someone's memory.
 if [ -n "${SUPABASE_SECRET_KEY:-}" ] && [ -f .env.local ]; then
   echo "==> 6/6 upload to Supabase"
-  node --env-file=.env.local scripts/upload-bank.mjs
+  node --env-file=.env.local scripts/upload-bank.mjs --bank "$WORK/bank"
 else
   echo
   echo "note: no SUPABASE_SECRET_KEY, so the database was not updated."
