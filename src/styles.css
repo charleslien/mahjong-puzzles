@@ -16,6 +16,12 @@
      to clear the contrast threshold. */
   --accent-strong: #1a49b8;
   --accent-contrast: #ffffff;
+  /* Background and text for anything filled with the accent colour. Kept as a
+     pair because the right text colour depends on how light the fill is, and in
+     dark mode the accent is light enough that white text on it fails contrast —
+     dark text is correct there. */
+  --accent-fill: #2563eb;
+  --on-accent: #ffffff;
 
   --grade-optimal: #12803c;
   --grade-good: #2f8f4e;
@@ -57,6 +63,8 @@
     --accent: #5b93fb;
     --accent-soft: rgba(91, 147, 251, 0.16);
     --accent-strong: #a8c6ff;
+    --accent-fill: #5b93fb;
+    --on-accent: #0c1016;
 
     --grade-optimal: #3fb950;
     --grade-good: #56b96b;
@@ -238,9 +246,9 @@ body {
 }
 
 .button--primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: transparent;
-  color: var(--accent-contrast);
+  color: var(--on-accent);
 }
 
 .button--primary:hover:not(:disabled) {
@@ -307,9 +315,9 @@ body {
 }
 
 .chip--on {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: transparent;
-  color: var(--accent-contrast);
+  color: var(--on-accent);
 }
 
 .tag {
@@ -686,7 +694,8 @@ kbd {
 }
 
 .plate--active {
-  background: var(--accent);
+  background: var(--accent-fill);
+  color: var(--on-accent);
 }
 
 .plate--viewer {
@@ -1556,6 +1565,25 @@ kbd {
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: center;
+}
+
+/* The panel behind these is dark green whatever the page theme is, so the
+   buttons cannot inherit the surface colour — in dark mode that rendered them
+   near-black on near-black. */
+.choices__actions .button--choice {
+  background: #fff;
+  border-color: transparent;
+  color: #14181d;
+}
+
+.choices__actions .button--choice:hover:not(:disabled) {
+  background: #e8ecf1;
+}
+
+.choices__actions .choice__key {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: #14181d;
 }
 
 @media (max-width: 640px) {

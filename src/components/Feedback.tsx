@@ -95,8 +95,11 @@ function OptionRow({
           "best" made the top line the only one you could not read. */}
       <span className="opt__ev">{action.ev >= 0 ? `+${action.ev.toFixed(2)}` : action.ev.toFixed(2)}</span>
 
+      {/* A gap smaller than the displayed precision is reported as such rather
+          than rounded to "−0.00", which reads as a signed zero and tells you
+          neither that there is a gap nor that it does not matter. */}
       <span className="opt__delta">
-        {action.loss > 0 ? `−${action.loss.toFixed(2)}` : '—'}
+        {action.loss <= 0 ? '—' : action.loss < 0.005 ? '−<0.01' : `−${action.loss.toFixed(2)}`}
       </span>
 
       <span className="opt__shanten">{shantenLabel(action.shantenAfter)}</span>
