@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { doraFromIndicator, sortTiles, type Tile } from '../lib/tiles';
 import { seatLayout, type Snapshot, type SeatState } from '../lib/replay';
 import type { Seat } from '../types/puzzle';
@@ -44,7 +46,66 @@ function River({ seat, position, size }: { seat: SeatState; position: Position; 
   );
 }
 
-function Melds({ seat, position, size }: { seat: SeatState; position: Position; size: TileSize }) {
+/**
+ * Order a meld's tiles so the called one sits where it came from.
+ *
+ * A real table rotates the claimed tile sideways and places it on the side
+ * facing the player it was taken from: left edge for the seat on your left,
+ * middle for the one across, right edge for the one on your right. That is how
+ * everyone at the table reads, at a glance, who fed the call — information the
+ * board was simply not showing.
+ *
+ * Returns the tiles paired with whether each is the claimed one.
+ */
+/** Where a claimed tile came from, in words, for screen readers. */
+function claimedFrom(from: Seat | undefined, owner: Seat): string {
+  if (from === undefined) return 'claimed tile';
+  const offset = (from - owner + 4) % 4;
+  if (offset === 1) return 'claimed from the player on the right';
+  if (offset === 2) return 'claimed from the player across';
+  if (offset === 3) return 'claimed from the player on the left';
+  return 'claimed tile';
+}
+
+function arrangeMeld(
+  meld: SeatState['melds'][number],
+  owner: Seat,
+): Array<{ tile: Tile | undefined; claimed: boolean }> {
+  const concealed = meld.kind === 'ankan';
+  if (concealed || meld.from === undefined || meld.from === owner) {
+    return meld.tiles.map((tile, index) => ({
+      // A closed kan shows its outer tiles face-down.
+      tile: concealed && (index === 0 || index === 3) ? undefined : tile,
+      claimed: false,
+    }));
+  }
+
+  // Which side of the caller the tile came from, in seating order.
+  const offset = (meld.from - owner + 4) % 4;
+  const rest = [...meld.tiles];
+  // The claimed tile is the last one appended when the meld was built.
+  const claimedTile = rest.pop() as Tile;
+
+  const claimed = { tile: claimedTile, claimed: true };
+  const others = rest.map((tile) => ({ tile: tile as Tile | undefined, claimed: false }));
+
+  if (offset === 3) return [claimed, ...others]; // taken from the seat on the left
+  if (offset === 1) return [...others, claimed]; // taken from the seat on the right
+  // Across the table: conventionally the middle tile.
+  return [others[0], claimed, ...others.slice(1)].filter(Boolean);
+}
+
+function Melds({
+  seat,
+  owner,
+  position,
+  size,
+}: {
+  seat: SeatState;
+  owner: Seat;
+  position: Position;
+  size: TileSize;
+}) {
   // Rendered even when empty. Returning null here made a seat's whole column
   // shorter until it called something, so any call mid-hand shifted every
   // control below the board — the row's height is reserved in CSS instead.
@@ -52,12 +113,14 @@ function Melds({ seat, position, size }: { seat: SeatState; position: Position; 
     <div className={`board__melds board__melds--${position}`}>
       {seat.melds.map((meld, i) => (
         <span className="board__meld" key={i}>
-          {meld.tiles.map((tile, j) => (
+          {arrangeMeld(meld, owner).map((entry, j) => (
             <TileView
-              key={`${tile}-${j}`}
-              // A closed kan shows its outer tiles face-down.
-              tile={meld.kind === 'ankan' && (j === 0 || j === 3) ? undefined : tile}
+              key={`${entry.tile ?? 'back'}-${j}`}
+              tile={entry.tile}
               size={size}
+              // Sideways, the way a claimed tile is laid on a real table.
+              rotation={entry.claimed ? 90 : 0}
+              describedAs={entry.claimed ? claimedFrom(meld.from, owner) : undefined}
             />
           ))}
         </span>
@@ -170,6 +233,18 @@ export interface GameBoardProps {
   interactive?: boolean;
   onSelect?: (tile: Tile) => void;
   accentFor?: (tile: Tile) => 'best' | 'good' | 'bad' | undefined;
+  /**
+   * Rendered on the felt, immediately above the viewer's hand.
+   *
+   * Riichi and call puzzles are answered with buttons rather than by clicking a
+   * tile, and those buttons used to sit in a panel below the board — so the
+   * question was on the table and the answer was somewhere else entirely.
+   *
+   * Placed in the bottom seat's stack rather than absolutely positioned over the
+   * felt: floating it at the bottom edge covered the viewer's own hand, which is
+   * the one thing you need to see to decide whether to call.
+   */
+  overlay?: ReactNode;
 }
 
 /**
@@ -184,6 +259,7 @@ export function GameBoard({
   interactive = false,
   onSelect,
   accentFor,
+  overlay,
 }: GameBoardProps) {
   const layout = seatLayout(viewer);
   const positions: Array<[Position, Seat]> = [
@@ -202,26 +278,52 @@ export function GameBoard({
           const handSize: TileSize = position === 'bottom' ? 'lg' : 'sm';
           const riverSize: TileSize = position === 'bottom' ? 'sm' : 'xs';
 
+          const plate = (
+            <SeatPlate
+              seat={seat}
+              state={state}
+              oya={snapshot.oya}
+              isViewer={seat === viewer}
+              active={snapshot.actor === seat}
+            />
+          );
+          const hand = (
+            <Hand
+              seat={state}
+              position={position}
+              reveal={reveal}
+              size={handSize}
+              interactive={interactive && seat === viewer}
+              onSelect={onSelect}
+              accentFor={seat === viewer ? accentFor : undefined}
+            />
+          );
+          const melds = <Melds seat={state} owner={seat} position={position} size={riverSize} />;
+          const river = <River seat={state} position={position} size={riverSize} />;
+
+          // A discard pile sits in front of its owner, between them and the
+          // centre of the table. For the three seats drawn above the centre that
+          // is below their hand, which is what the natural order already gives;
+          // for the viewer at the bottom it is *above* theirs, so the bottom
+          // seat is stacked the other way up.
           return (
             <div className={`board__side board__side--${position}`} key={position}>
-              <SeatPlate
-                seat={seat}
-                state={state}
-                oya={snapshot.oya}
-                isViewer={seat === viewer}
-                active={snapshot.actor === seat}
-              />
-              <Hand
-                seat={state}
-                position={position}
-                reveal={reveal}
-                size={handSize}
-                interactive={interactive && seat === viewer}
-                onSelect={onSelect}
-                accentFor={seat === viewer ? accentFor : undefined}
-              />
-              <Melds seat={state} position={position} size={riverSize} />
-              <River seat={state} position={position} size={riverSize} />
+              {position === 'bottom' ? (
+                <>
+                  {river}
+                  {melds}
+                  {overlay && <div className="board__choices">{overlay}</div>}
+                  {hand}
+                  {plate}
+                </>
+              ) : (
+                <>
+                  {plate}
+                  {hand}
+                  {melds}
+                  {river}
+                </>
+              )}
             </div>
           );
         })}

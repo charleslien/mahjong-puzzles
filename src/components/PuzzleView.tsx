@@ -196,6 +196,29 @@ export function PuzzleView({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Riichi and call puzzles are answered by button. Those buttons belong on the
+  // table next to the hand they concern, not in a panel underneath it.
+  const choices =
+    !answered && puzzle.kind !== 'discard' ? (
+      <div className="choices">
+        <p className="choices__prompt">{PROMPTS[puzzle.kind]}</p>
+        <div className="choices__actions">
+          {puzzle.actions.map((action, index) => (
+            <button
+              key={action.id}
+              type="button"
+              className="button button--choice"
+              onClick={() => onAnswer(action.id)}
+              disabled={!atDecision}
+            >
+              <kbd className="choice__key">{index + 1}</kbd>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : undefined;
+
   return (
     <article className="puzzle">
       <header className="puzzle__head">
@@ -241,6 +264,7 @@ export function PuzzleView({
         interactive={!answered && atDecision && puzzle.kind === 'discard'}
         onSelect={onTile}
         accentFor={accentFor}
+        overlay={choices}
       />
 
       {hasHistory && (
@@ -327,30 +351,12 @@ export function PuzzleView({
       {/* Only while the question is still open. Once answered, the feedback panel
           says everything this did, and leaving it up just pushed the answer
           further down the page. */}
-      {!answered && (
+      {!answered && puzzle.kind === 'discard' && (
         <section className="ask">
           <h2 className="ask__prompt">{PROMPTS[puzzle.kind]}</h2>
-
-          {puzzle.kind === 'discard' ? (
-            <p className="ask__hint">
-              {atDecision ? 'Pick a tile from your hand.' : 'Return to the decision to answer.'}
-            </p>
-          ) : (
-            <div className="ask__actions">
-              {puzzle.actions.map((action, index) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  className="button button--choice"
-                  onClick={() => onAnswer(action.id)}
-                  disabled={!atDecision}
-                >
-                  <kbd className="choice__key">{index + 1}</kbd>
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <p className="ask__hint">
+            {atDecision ? 'Pick a tile from your hand.' : 'Return to the decision to answer.'}
+          </p>
         </section>
       )}
 

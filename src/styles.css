@@ -577,6 +577,8 @@ kbd {
   border: 2px solid var(--felt-edge);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  /* Positioning context for the choice overlay. */
+  position: relative;
 }
 
 .board__side {
@@ -1508,4 +1510,56 @@ kbd {
   font-weight: 700;
   color: var(--accent-strong);
   vertical-align: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+   Choices on the table
+
+   Riichi and call puzzles are answered with buttons rather than by clicking a
+   tile. They used to sit in a panel below the board, which put the question on
+   the table and the answer somewhere else — you had to go looking for it. They
+   now float over the felt beside the hand they concern.
+   --------------------------------------------------------------------------- */
+
+.board__choices {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: min(38rem, 96%);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.choices {
+  width: 100%;
+  background: rgba(12, 38, 26, 0.86);
+  backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.choices__prompt {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.choices__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .choices__actions .button--choice {
+    flex: 1 1 100%;
+  }
 }
