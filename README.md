@@ -337,6 +337,16 @@ may appear when, and `puzzleBank.test.ts` checks it against the bank on disk.
 Choosing to drill traps is the solver's own hint to take; a chip they did not
 ask for is not.
 
+**The difficulty word carries some of the same information, and is left alone.**
+Over the same 942 discard puzzles, 0.4% of Easy ones are traps against 32.6% of
+Hard ones — so "Easy" says the efficiency pick is right with 99.6% confidence.
+Some of that is what difficulty *means*: an easy puzzle is one where the obvious
+play is correct, and the same is true of a 900-rated chess puzzle. Some of it is
+definitional rather than emergent, because `difficulty_score` adds a flat +12
+for an efficiency trap. Hiding the word would cost a real affordance to close a
+much weaker leak than the chip's, so it stays — recorded here because it is a
+judgement call and not an oversight.
+
 ### Difficulty
 
 Lichess learns difficulty from real solve attempts via Glicko-2, which needs a
