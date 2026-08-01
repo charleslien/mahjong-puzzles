@@ -351,8 +351,21 @@ export function PuzzleView({
   // still clickable — the chain stays on screen rather than being replaced by
   // the next question, so what has been committed to is readable and any part of
   // it can be revised in place.
+  //
+  // It stays after the answer too, showing the line that was played. Removing
+  // it took its height out of the seat block on the click that answered, which
+  // pulled the hand — the thing the verdict stripes are on — up by 96px at the
+  // exact moment a solver looks at it.
   let choices: ReactNode;
-  if (!answered && multiStep) {
+  if (multiStep) {
+    // Once answered, the chain reads back the line actually played, which is
+    // not always where `taken` got to: a fork that settles outright answers
+    // without ever being committed to.
+    const shown =
+      answered && answer.action.branch
+        ? { branch: answer.action.branch, consumed: answer.action.consumed }
+        : taken;
+    const shownSets = shown ? consumedSets(puzzle.actions, shown.branch) : [];
     const steps: Step[] = [
       {
         key: 'branch',
@@ -362,7 +375,7 @@ export function PuzzleView({
           label: BRANCH_LABELS[branch],
           continues: !settlesOutright(puzzle.actions, branch),
         })),
-        selected: taken?.branch,
+        selected: shown?.branch,
         onPick: (id) => chooseBranch(id as ActionBranch),
       },
     ];
@@ -372,21 +385,21 @@ export function PuzzleView({
         key: 'set',
         prompt: 'Which tiles do you call with?',
         options:
-          sets.length > 1
-            ? sets.map((consumed) => ({
+          shownSets.length > 1
+            ? shownSets.map((consumed) => ({
                 id: consumedKey(consumed),
                 tiles: consumed,
                 continues: true,
               }))
             : [],
-        selected: taken?.consumed ? consumedKey(taken.consumed) : undefined,
+        selected: shown?.consumed ? consumedKey(shown.consumed) : undefined,
         onPick: (id) => {
           const set = sets.find((consumed) => consumedKey(consumed) === id);
           if (set) chooseSet(set);
         },
       });
     }
-    choices = <DecisionSteps steps={steps} disabled={!atDecision} />;
+    choices = <DecisionSteps steps={steps} disabled={answered || !atDecision} />;
   }
 
   // The call in progress while the question is open, and the call that was

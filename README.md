@@ -311,6 +311,11 @@ before the call is made. Growing the layout as it was walked moved the fork
 buttons and the hand out from under the cursor between clicks, by 64px on the
 click that committed to a call.
 
+The chain stays after the answer, reading back the line played. Removing it took
+its height out of the seat block at the moment of answering, which pulled the
+hand — the thing the verdict stripes are on — up by 96px just as a solver looked
+at it.
+
 There are no prompts. "Do you call, or let it pass?" above two buttons reading
 Chi and Pass, and "And which tile do you discard?" above a hand with the illegal
 tiles greyed out, restated what the controls underneath already showed — and
