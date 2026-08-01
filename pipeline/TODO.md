@@ -244,6 +244,12 @@ mark which discard was being asked about, nor draw the meld a call would make.
 
 ## 10. Composition is chosen now, not sampled — done
 
+The bank went from 2,559 puzzles to **8,150** on this: 4,380 discards, 2,150
+riichi decisions, 1,620 calls. Riichi was 152 before, which meant the site's
+Riichi filter repeated inside one session. Difficulty bands came out 35/37/28
+and needed no recalibration; the answer-balance cap binds at 59% for riichi and
+60% for calls; a session is still ~126 kB.
+
 `curate.py` sits between annotation and verification and caps how many of each
 kind reach akochan, so mining density and bank composition stopped being the
 same number. The rules and the measurements are in the README under

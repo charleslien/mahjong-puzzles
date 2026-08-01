@@ -6,8 +6,9 @@ Riichi mahjong decision drills, mined from real games and graded by evaluation
 loss. A static site, deployed on Vercel, with an offline generation pipeline that
 never runs in the browser.
 
-**Current state:** complete and playable. The bank is mined from real Tenhou
-houou-room hanchan held out of model training, and every expected value comes
+**Current state:** complete and playable, with 8,150 positions. The bank is
+mined from real Tenhou houou-room hanchan held out of model training, and every
+expected value comes
 from [akochan](https://github.com/critter-mj/akochan)'s search in Tenhou
 placement points — not from a tile-efficiency baseline. Discards, riichi
 decisions and calls are all populated; riichi and call puzzles are played out as
@@ -161,7 +162,8 @@ The bank exists twice, deliberately, and the two are not the same size:
 
 - **Supabase** holds everything. The site asks for one session's worth at a time
   through an indexed `shuffle_key` sample, so bank size costs nothing per visit —
-  a session is ~130 kB rather than the whole 5.7 MB.
+  a session is ~130 kB rather than the whole 50 MB. It holds 8,150 puzzles —
+  4,380 discards, 2,150 riichi decisions and 1,620 calls.
 - **`public/puzzles/`** is the offline fallback, served when `VITE_PUZZLE_SOURCE`
   is not `supabase` or the database is unreachable. It is fetched whole and it
   lives in git, so `run-pipeline.sh` caps it (`FALLBACK_SIZE`, default 1200).

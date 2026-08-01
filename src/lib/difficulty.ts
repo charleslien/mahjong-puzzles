@@ -16,6 +16,11 @@
  * one session. `puzzleBank.test.ts` checks the split against the bank on disk,
  * so a regeneration that skews the proxy fails rather than quietly emptying a
  * band again.
+ *
+ * Rechecked after the bank grew from 2,559 puzzles to 8,150 and its mix changed
+ * — riichi went from 6% of it to 26% — on the theory that a different mix of
+ * kinds would move the distribution. It came out 35 / 37 / 28, so the edges
+ * stayed where they were.
  */
 export interface DifficultyBand {
   id: 'all' | 'easy' | 'medium' | 'hard';
