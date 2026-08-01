@@ -316,6 +316,17 @@ its height out of the seat block at the moment of answering, which pulled the
 hand — the thing the verdict stripes are on — up by 96px just as a solver looked
 at it.
 
+Nothing moves *between* puzzles either. A discard carries no panel, a riichi one
+row and a call two, so a seat sized to its contents put the hand at three
+different heights — 878, 974 and 1110 — depending on which puzzle came up next.
+The viewer's block is packed against the bottom of a slot tall enough for the
+largest one, so the hand, the scrubber and the feedback table land in the same
+place every time and everything a decision adds grows upward into the felt. The
+cost is that the board is as tall as its tallest case on every puzzle, about
+230px more than a discard needs, spent on empty green above the player's
+discards. Not on narrow screens, where the seats stack and that reservation
+would be 236px of dead scroll on an 844px-tall phone.
+
 There are no prompts. "Do you call, or let it pass?" above two buttons reading
 Chi and Pass, and "And which tile do you discard?" above a hand with the illegal
 tiles greyed out, restated what the controls underneath already showed — and

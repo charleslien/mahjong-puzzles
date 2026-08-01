@@ -699,8 +699,35 @@ kbd {
 .board__side--right {
   grid-area: right;
 }
+/* The viewer's own block is packed against the bottom edge of a slot tall enough
+   for the largest one any puzzle produces.
+
+   That makes the hand — and with it the scrubber and the feedback table below —
+   land in the same place on every puzzle, and it means everything the decision
+   adds grows *upward* into the felt instead of pushing the hand down. A discard
+   puzzle carries no panel and a riichi one carries a single row where a call
+   carries two, so sizing this to its contents put the hand at three different
+   heights, 878 to 1110, depending on which puzzle came up next.
+
+   Slack lands above the river, which is empty felt. The first attempt reserved
+   the panel's height in place instead, which left 400px of green between the
+   player's discards and their hand and made the seat look stranded. */
 .board__side--bottom {
   grid-area: bottom;
+  justify-content: flex-end;
+  /* River at its tallest (four rows of sm tiles), a meld row, the slot a called
+     meld fills, the two-row decision panel, the hand and the gaps between —
+     496px, measured, with a little over so sub-pixel rounding on the tallest
+     panel cannot nudge the felt. */
+  min-height: 31.5rem;
+}
+
+@media (max-width: 640px) {
+  /* Single column: the seats stack, so there is no shared row to hold open and
+     a reserved block would just be dead scroll. */
+  .board__side--bottom {
+    min-height: 0;
+  }
 }
 
 /* Hands and melds: always horizontal. */
@@ -1753,9 +1780,15 @@ kbd {
    now float over the felt beside the hand they concern.
    --------------------------------------------------------------------------- */
 
+/* The slot the decision panel sits in, held open at the height of the tallest
+   panel any puzzle produces: two step rows plus the panel's own padding. The
+   panel is bottom-aligned inside it, so it always sits directly above the hand
+   whether it has one row, two, or none at all — and the hand, the scrubber and
+   the feedback table below them stay put from one puzzle to the next. */
 .board__choices {
   display: flex;
   justify-content: center;
+  align-items: flex-end;
   width: 100%;
   max-width: min(38rem, 96%);
   margin: 0.25rem 0 0.5rem;

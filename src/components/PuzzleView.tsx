@@ -474,8 +474,10 @@ export function PuzzleView({
         accentFor={accentFor}
         selectable={legal ? (tile) => legal.has(tile) : undefined}
         pendingMeld={pendingMeld}
-        // Held open from the first frame on any puzzle a call can be made in.
-        reserveMeld={puzzle.kind === 'call' && Boolean(puzzle.position.calledTile)}
+        // Held open on every puzzle, not only the ones a call can happen in:
+        // otherwise the hand sits 65px lower on a call than on a discard, and
+        // moves under the cursor between puzzles rather than during one.
+        reserveMeld
         offerFrom={atDecision ? puzzle.position.calledFrom : undefined}
         overlay={choices}
       />
