@@ -64,9 +64,11 @@ from pipeline.features import (
 )
 from pipeline.jsonl import open_text
 
-# Placement points, in the same units the site reports. Standard uma with the
-# 4th-place penalty folded in, so the value head learns something interpretable.
-PLACEMENT_POINTS = (90.0, 45.0, 0.0, -135.0)
+# Placement points, in the same units the site reports. Declared in its own
+# stdlib-only module: akochan has to be told the same scale, and the test that
+# pins the two together must not need torch to run — while this file exits at
+# import without it.
+from pipeline.placement import PLACEMENT_POINTS
 
 
 def pick_device(requested: Optional[str]) -> str:

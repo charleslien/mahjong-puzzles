@@ -87,7 +87,12 @@ class TacticsTest(unittest.TestCase):
     def test_placement_scale_matches_the_trained_one(self):
         # The value head was regressed on these points; akochan's EV has to be in
         # the same unit or the margin thresholds in criteria.py are meaningless.
-        from pipeline.train import PLACEMENT_POINTS
+        #
+        # Imported from pipeline.placement, not pipeline.train: train.py exits at
+        # import without torch, so reading it here meant this test errored on
+        # every machine without a GPU stack — including CI, where it had failed
+        # on every run the repository has ever made.
+        from pipeline.placement import PLACEMENT_POINTS
 
         self.assertEqual(tuple(float(pt) for pt in JUN_PT), tuple(PLACEMENT_POINTS))
 
