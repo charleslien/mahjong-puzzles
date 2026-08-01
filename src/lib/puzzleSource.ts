@@ -153,8 +153,15 @@ function inBand(puzzle: Puzzle, min: number, max: number): boolean {
   return puzzle.difficulty >= min && puzzle.difficulty <= max;
 }
 
-/** Mirrors the sampler's `kinds`/`any_tags`: all of the filters, any of the tags. */
-function matches(puzzle: Puzzle, kinds?: string[], tags?: string[]): boolean {
+/**
+ * Mirrors the sampler's `kinds`/`any_tags`: all of the filters, any of the tags.
+ *
+ * Exported so the two implementations can be checked against each other's
+ * semantics — the SQL is `p.kind = any(kinds) and p.tags && any_tags`, and a
+ * static bank that filtered differently would make a filter mean two things
+ * depending on whether a deployment had a database.
+ */
+export function matches(puzzle: Pick<Puzzle, 'kind' | 'tags'>, kinds?: string[], tags?: string[]): boolean {
   if (kinds?.length && !kinds.includes(puzzle.kind)) return false;
   if (tags?.length && !tags.some((tag) => puzzle.tags.includes(tag))) return false;
   return true;
