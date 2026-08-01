@@ -236,6 +236,27 @@ mark which discard was being asked about, nor draw the meld a call would make.
       draw the right number of backs, and it would remove the "Reveal all hands"
       review feature, so it is a genuine trade rather than an oversight.
 
+      Worth noting what it would and would not buy: the answer is in the payload
+      too — `accepted` is a field on every action — so this is not an anti-cheat
+      measure. It would cut ~3.2 kB of the 6.2 kB average row, which matters for
+      the session fetch and for the database's size, and that is the honest case
+      for it.
+
+## 10. Composition is chosen now, not sampled — done
+
+`curate.py` sits between annotation and verification and caps how many of each
+kind reach akochan, so mining density and bank composition stopped being the
+same number. The rules and the measurements are in the README under
+**What gets verified is chosen, not sampled**; the short version:
+
+- riichi-capable positions are ~5% of discard candidates and publish at ~53%,
+  so a riichi-aimed pass is cheap once the other kinds are quota'd out;
+- `--max-shanten 0` makes the annotation ahead of it ~6x faster for the same
+  result, because tenpai is one shanten call and acceptance is fourteen;
+- growing one kind alone skews the bank, so a top-up pass for the others runs
+  after, and `export.py --input a.jsonl b.jsonl c.jsonl` merges the runs on
+  (gameId, decisionIndex).
+
 ## Deliberately not planned
 
 - **Shipping model weights to the browser.** Weights delivered to a browser are
