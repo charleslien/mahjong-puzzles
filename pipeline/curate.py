@@ -185,7 +185,12 @@ def parse_quota(values: Sequence[str]) -> Dict[str, int]:
         if "=" not in value:
             raise ValueError("quota must look like bucket=count, got {!r}".format(value))
         bucket, count = value.split("=", 1)
-        quotas[bucket.strip()] = int(count)
+        limit = int(count)
+        if limit < 0:
+            # Otherwise it reaches _even_sample, which reads any non-positive
+            # limit as "no cap" — so `riichi=-1` would quietly select all of them.
+            raise ValueError("quota must not be negative, got {!r}".format(value))
+        quotas[bucket.strip()] = limit
     return quotas
 
 

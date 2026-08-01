@@ -145,6 +145,12 @@ class Quotas(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_quota(["riichi"])
 
+    def test_a_negative_quota_is_refused(self):
+        # It would otherwise reach _even_sample, which reads a non-positive limit
+        # as "no cap" — the opposite of what asking for fewer than none means.
+        with self.assertRaises(ValueError):
+            parse_quota(["riichi=-1"])
+
 
 if __name__ == "__main__":
     unittest.main()
