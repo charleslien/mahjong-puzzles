@@ -323,6 +323,13 @@ export interface GameBoardProps {
     /** The call was actually played, rather than being part-way chosen. */
     settled?: boolean;
   };
+  /**
+   * Hold the space a call would fill even before one is chosen.
+   *
+   * Set on any puzzle where a meld can appear, so committing to a call does not
+   * move the hand and the buttons above it.
+   */
+  reserveMeld?: boolean;
   /** Seat whose newest discard is the one a call puzzle is asking about. */
   offerFrom?: Seat;
   /**
@@ -354,6 +361,7 @@ export function GameBoard({
   overlay,
   selectable,
   pendingMeld,
+  reserveMeld,
   offerFrom,
 }: GameBoardProps) {
   const layout = seatLayout(viewer);
@@ -405,12 +413,18 @@ export function GameBoard({
           const melds = (
             <>
               <Melds seat={state} owner={seat} position={position} size={riverSize} />
-              {isViewer && pendingMeld && (
+              {/* Kept on screen empty while a call is still possible. A meld
+                  appearing where there was nothing grows the seat block and
+                  pushes the hand and the buttons above it down by its own
+                  height — 64px, measured, on the click that commits to a
+                  call. */}
+              {isViewer && (pendingMeld || reserveMeld) && (
                 <div
                   className={`board__melds board__melds--pending${
-                    pendingMeld.settled ? ' board__melds--settled' : ''
+                    pendingMeld?.settled ? ' board__melds--settled' : ''
                   }`}
                 >
+                  {pendingMeld && (
                   <span className="board__meld">
                     {arrangeMeld(
                       {
@@ -431,6 +445,7 @@ export function GameBoard({
                       />
                     ))}
                   </span>
+                  )}
                 </div>
               )}
             </>

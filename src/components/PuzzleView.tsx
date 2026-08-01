@@ -8,6 +8,7 @@ import {
   isMultiStep,
   legalTiles,
   linesIn,
+  settlesOutright,
 } from '../lib/decision';
 import { difficultyWord } from '../lib/difficulty';
 import type { GradedAnswer } from '../lib/grade';
@@ -111,6 +112,19 @@ export function PuzzleView({
   const sets = useMemo(
     () => (taken ? consumedSets(puzzle.actions, taken.branch) : []),
     [puzzle, taken],
+  );
+
+  /**
+   * Whether this puzzle can ever ask which set to call with.
+   *
+   * Decided from the puzzle rather than from where the solver has got to, so
+   * the row can be on screen from the start. Otherwise it appears on the click
+   * that reaches it and pushes the fork buttons — the ones just clicked — out
+   * from under the cursor.
+   */
+  const asksForSet = useMemo(
+    () => branches.some((branch) => consumedSets(puzzle.actions, branch).length > 1),
+    [puzzle, branches],
   );
 
   /** The lines still reachable from where the solver has got to. */
@@ -343,36 +357,36 @@ export function PuzzleView({
       {
         key: 'branch',
         prompt: PROMPTS[puzzle.kind],
-        options: branches.map((branch) => ({ id: branch, label: BRANCH_LABELS[branch] })),
+        options: branches.map((branch) => ({
+          id: branch,
+          label: BRANCH_LABELS[branch],
+          continues: !settlesOutright(puzzle.actions, branch),
+        })),
         selected: taken?.branch,
         onPick: (id) => chooseBranch(id as ActionBranch),
       },
     ];
-    if (taken && sets.length > 1) {
+    if (asksForSet) {
+      // Always present, empty until a fork with more than one set is taken.
       steps.push({
         key: 'set',
         prompt: 'Which tiles do you call with?',
-        options: sets.map((consumed) => ({ id: consumedKey(consumed), tiles: consumed })),
-        selected: taken.consumed ? consumedKey(taken.consumed) : undefined,
+        options:
+          sets.length > 1
+            ? sets.map((consumed) => ({
+                id: consumedKey(consumed),
+                tiles: consumed,
+                continues: true,
+              }))
+            : [],
+        selected: taken?.consumed ? consumedKey(taken.consumed) : undefined,
         onPick: (id) => {
           const set = sets.find((consumed) => consumedKey(consumed) === id);
           if (set) chooseSet(set);
         },
       });
     }
-    choices = (
-      <DecisionSteps
-        steps={steps}
-        hint={
-          pickingTile
-            ? atDecision
-              ? 'And which tile do you discard?'
-              : 'Return to the decision to answer.'
-            : undefined
-        }
-        disabled={!atDecision}
-      />
-    );
+    choices = <DecisionSteps steps={steps} disabled={!atDecision} />;
   }
 
   // The call in progress while the question is open, and the call that was
@@ -447,6 +461,8 @@ export function PuzzleView({
         accentFor={accentFor}
         selectable={legal ? (tile) => legal.has(tile) : undefined}
         pendingMeld={pendingMeld}
+        // Held open from the first frame on any puzzle a call can be made in.
+        reserveMeld={puzzle.kind === 'call' && Boolean(puzzle.position.calledTile)}
         offerFrom={atDecision ? puzzle.position.calledFrom : undefined}
         overlay={choices}
       />

@@ -28,8 +28,21 @@ export const BRANCH_LABELS: Record<ActionBranch, string> = {
   chi: 'Chi',
   pon: 'Pon',
   daiminkan: 'Kan',
-  pass: 'Let it pass',
+  pass: 'Pass',
 };
+
+/**
+ * Whether taking this fork answers the puzzle on its own.
+ *
+ * Two do: letting a discard pass, which throws nothing, and an open kan, which
+ * is followed by a draw from the dead wall. Every other fork leads to at least
+ * one more choice — which set, or which tile — and the buttons say so, because
+ * "does this submit my answer" is otherwise something you find out by clicking.
+ */
+export function settlesOutright(actions: PuzzleAction[], branch: ActionBranch): boolean {
+  const lines = linesIn(actions, branch);
+  return lines.length === 1 && lines[0].tile === undefined;
+}
 
 /** Identity of a call's consumed set, stable across orderings. */
 export function consumedKey(consumed: Tile[] | undefined): string {

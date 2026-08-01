@@ -481,8 +481,16 @@ kbd {
   transform-origin: center;
 }
 
+/* A tile the chosen branch cannot discard. It stays in place, because which
+   tiles a branch rules out is the most useful thing the narrowing shows — but
+   it has to actually read as out.
+
+   This was `saturate(0.9) brightness(0.97)`, a change of a few percent that is
+   invisible at tile size: declaring riichi took eleven of fourteen tiles out of
+   play and the hand looked untouched. */
 .tile--muted .tile__img {
-  filter: saturate(0.9) brightness(0.97);
+  filter: grayscale(0.9) brightness(0.92);
+  opacity: 0.4;
 }
 
 .tile--interactive {
@@ -1724,11 +1732,6 @@ kbd {
 }
 
 /* The number that answers this option from the keyboard. */
-.choice__key {
-  border-color: var(--border-strong);
-  opacity: 0.75;
-}
-
 /* Which row was the solver's. This used to be carried by a sentence above the
    table; with that gone the table has to say it itself. */
 .opt__you {
@@ -1772,44 +1775,17 @@ kbd {
   align-items: center;
 }
 
-.choices__prompt {
-  margin: 0;
-  color: #fff;
-  font-size: 0.92rem;
-  font-weight: 650;
-  text-align: center;
-}
-
-.choices__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
-}
-
 /* The panel behind these is dark green whatever the page theme is, so the
    buttons cannot inherit the surface colour — in dark mode that rendered them
    near-black on near-black. */
-.choices__actions .button--choice {
+.choices__step .button--choice {
   background: #fff;
   border-color: transparent;
   color: #14181d;
 }
 
-.choices__actions .button--choice:hover:not(:disabled) {
+.choices__step .button--choice:hover:not(:disabled) {
   background: #e8ecf1;
-}
-
-.choices__actions .choice__key {
-  background: rgba(0, 0, 0, 0.07);
-  border-color: rgba(0, 0, 0, 0.18);
-  color: #14181d;
-}
-
-@media (max-width: 640px) {
-  .choices__actions .button--choice {
-    flex: 1 1 100%;
-  }
 }
 
 /* End-of-set summary. */
@@ -1961,54 +1937,83 @@ kbd {
   font-size: 0.8em;
 }
 
-/* One row per step of the decision, each staying on screen with its answer
-   marked. */
-/* Stretched to the panel, not sized by its own contents.
+/* One row per step of the decision — including the steps not reached yet.
+   A fixed height, so an empty row reserves exactly what a full one occupies and
+   the fork buttons stay where they were when they were clicked.
 
-   The panel is a centred column, so anything inside it is fit-content by
-   default — and a wrapping flex row's fit-content width is one item wide, not
-   the row's. That is why two options that easily fit side by side in a 600px
-   panel were stacked in a 236px column, each one on its own line. Stretching is
-   safe here where a percentage width would not be: the panel's own width comes
-   from its parent, not from what is inside it. */
+   Tall enough for the tallest thing a row can hold, which is a button with sm
+   tiles in it: 32px of tile plus the button's own padding. A text button is
+   shorter and stretches to fill, so both rows measure the same.
+
+   Stretched to the panel, not sized by its own contents. The panel is a centred
+   column, so anything inside it is fit-content by default — and a flex row's
+   fit-content width is one item wide, which is how two options that easily fit
+   side by side in a 600px panel came to be stacked in a 236px column. */
 .choices__step {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  flex-direction: row;
+  gap: 0.5rem;
   align-self: stretch;
   align-items: stretch;
+  justify-content: center;
+  height: 3.4rem;
+  /* Never wraps: a second line would change the row's height, which is the one
+     thing this layout promises not to do. Narrow screens scroll instead. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-/* The closing instruction, once the buttons are settled and the answer is a
-   tile in the hand. Lighter than a prompt with options under it. */
-.choices__prompt--hint {
-  font-weight: 500;
-  opacity: 0.85;
+.choices__step::-webkit-scrollbar {
+  display: none;
+}
+
+/* A step held open but not reached yet. Outlined rather than left blank, so the
+   reserved height reads as a slot waiting for a choice instead of as a gap.
+   Dashed, matching the pending meld: the same "not yet" the board already uses. */
+.choices__step:empty {
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius);
+}
+
+/* Share the row rather than claiming a basis each, so four options fit where
+   two do and neither row's height depends on how many there are. */
+.choices__step .button--choice {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 0.9rem;
+}
+
+/* "There is more to choose after this." Without it, whether a click submits the
+   answer is something you find out by clicking — and on a call, two of the four
+   forks answer outright while the others lead to a set and a discard. */
+.choice__more {
+  margin-left: 0.15rem;
+  opacity: 0.5;
+  font-size: 1.15em;
+  line-height: 1;
 }
 
 /* The option taken. Marked rather than removed, so the chain reads back and any
    step can be changed by picking a different one. */
-.choices__actions .button--choice-on {
+.choices__step .button--choice-on {
   background: var(--accent-fill);
   color: var(--on-accent);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
 }
 
-.choices__actions .button--choice-on:hover:not(:disabled) {
+.choices__step .button--choice-on:hover:not(:disabled) {
   background: var(--accent-fill);
   filter: brightness(1.08);
 }
 
-.choices__actions .button--choice-on .choice__key {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.35);
-  color: var(--on-accent);
-}
-
 /* A call the solver has committed to but not finished, drawn where the finished
    meld will sit. Dashed, because it has not happened yet. */
+/* Held open from the start on any puzzle that can produce a meld, so committing
+   to a call does not push the hand and the choice buttons down by its height.
+   A viewer's meld is four `lg` tiles tall plus the dashed border's padding. */
 .board__melds--pending {
-  min-height: 0;
+  min-height: calc(59px * var(--tile-scale) + 6px);
   margin-bottom: 0.2rem;
 }
 

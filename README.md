@@ -304,10 +304,28 @@ replaced each step with the next and offered a Back button, which turned a
 three-step call into a wizard: you could not see what you had committed to, and
 revising the first choice meant unwinding the rest by hand.
 
+**Nothing on the table moves as a decision is walked.** Every step a puzzle can
+reach is on screen from the first frame — an unreached one is an empty outlined
+row of the same height — and the space a called meld will occupy is held open
+before the call is made. Growing the layout as it was walked moved the fork
+buttons and the hand out from under the cursor between clicks, by 64px on the
+click that committed to a call.
+
+There are no prompts. "Do you call, or let it pass?" above two buttons reading
+Chi and Pass, and "And which tile do you discard?" above a hand with the illegal
+tiles greyed out, restated what the controls underneath already showed — and
+each was a line of text that came and went as the decision was walked. They
+survive as the accessible names of the button groups. What the buttons do carry
+is a `›` when there is more to choose after them, because "does this click
+submit my answer" is otherwise something you find out by clicking.
+
 The legal tiles narrow with the branch, which is the most useful thing on the
 screen: declaring restricts you to tiles that keep tenpai, and a sampled position
 offers 3 ways to declare against 12 ways to play on. The illegal ones are dimmed
-rather than removed — a tile that has vanished teaches nothing. A branch whose one
+rather than removed — a tile that has vanished teaches nothing, and one dimmed by
+`saturate(0.9) brightness(0.97)`, as these were, teaches nothing either: eleven
+of fourteen tiles went out of play on declaring riichi and the hand looked
+untouched. A branch whose one
 line throws nothing at all (letting a discard pass, or an open kan, which is
 followed by a draw from the dead wall) settles the puzzle outright; a branch with
 a single *legal discard* does not, because clicking a fork and having the puzzle
