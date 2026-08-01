@@ -20,7 +20,8 @@
  *   npm run annotate:ukeire -- --input candidates.jsonl --output annotated.jsonl
  */
 
-import { createReadStream, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 import { analyzePosition } from '../src/lib/analyzePosition';
@@ -59,15 +60,33 @@ async function main(): Promise<number> {
     crlfDelay: Infinity,
   });
 
-  const out: string[] = [];
+  /**
+   * Written as it goes rather than joined at the end.
+   *
+   * A dense mining pass hands this stage six figures of candidates, and holding
+   * every annotated record in an array meant ~180 MB of strings and one
+   * `join` — a run that dies there loses half an hour and writes nothing. It
+   * also means a run in progress can be watched.
+   */
+  const output = createWriteStream(outputPath, 'utf8');
+  const write = async (text: string): Promise<void> => {
+    if (!output.write(text)) await once(output, 'drain');
+  };
+
   let read = 0;
   let annotated = 0;
   let skipped = 0;
+
+  /** Loud enough to see movement on a long run, quiet enough on a short one. */
+  const PROGRESS_EVERY = 10000;
 
   for await (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     read += 1;
+    if (read % PROGRESS_EVERY === 0) {
+      process.stderr.write(`  ${read} read, ${annotated} annotated\n`);
+    }
 
     const candidate = JSON.parse(trimmed) as Candidate;
 
@@ -79,7 +98,7 @@ async function main(): Promise<number> {
       const names: Record<string, string> = {};
       const tiles = [...candidate.position.hand, candidate.calledTile as string].filter(Boolean);
       for (const tile of tiles) names[tile] = tileLabel(tile as never);
-      out.push(JSON.stringify({ ...candidate, tileLabels: names }));
+      await write(JSON.stringify({ ...candidate, tileLabels: names }) + '\n');
       annotated += 1;
       continue;
     }
@@ -124,19 +143,20 @@ async function main(): Promise<number> {
       .filter((option) => option.shantenAfter === bestShanten && option.ukeire === bestUkeire)
       .map((option) => `discard:${resolveHandTile(option.tile)}`);
 
-    out.push(
+    await write(
       JSON.stringify({
         ...candidate,
         bestShanten,
         currentShanten: analysis.currentShanten,
         ukeireBest,
         ukeireActions: perAction,
-      }),
+      }) + '\n',
     );
     annotated += 1;
   }
 
-  writeFileSync(outputPath, out.length ? out.join('\n') + '\n' : '', 'utf8');
+  output.end();
+  await once(output, 'close');
   process.stderr.write(
     `annotated ${annotated} of ${read} candidates (${skipped} not discard problems) -> ${outputPath}\n`,
   );
