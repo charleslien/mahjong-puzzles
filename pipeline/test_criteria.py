@@ -23,7 +23,7 @@ from pipeline.criteria import (
     naive_disagreement,
     screen_candidate,
 )
-from pipeline.export import puzzle_id, to_puzzle, write_bank
+from pipeline.export import dedupe, puzzle_id, to_puzzle, write_bank
 
 
 def actions(*pairs):
@@ -278,3 +278,24 @@ class PuzzleIdTest(unittest.TestCase):
         authored = {"position": {"seat": 2, "hand": ["1m"]}}
         self.assertTrue(puzzle_id(authored))
         self.assertEqual(puzzle_id(authored), puzzle_id(dict(authored)))
+
+
+class DedupeTest(unittest.TestCase):
+    """Merging verified runs is how a bank grows, and runs overlap."""
+
+    def row(self, game="g.mjson", index=1, marker="first"):
+        return {"gameId": game, "decisionIndex": index, "marker": marker}
+
+    def test_a_decision_verified_twice_is_kept_once(self):
+        kept = dedupe([self.row(), self.row(marker="second")])
+        self.assertEqual([row["marker"] for row in kept], ["first"])
+
+    def test_different_decisions_all_survive(self):
+        kept = dedupe([self.row(index=1), self.row(index=2), self.row(game="h.mjson")])
+        self.assertEqual(len(kept), 3)
+
+    def test_authored_positions_are_never_merged(self):
+        # They point at no log, so there is no identity to compare them on.
+        # Collapsing them would silently drop hand-written puzzles.
+        authored = [{"position": {"seat": 0}}, {"position": {"seat": 1}}]
+        self.assertEqual(len(dedupe(authored)), 2)

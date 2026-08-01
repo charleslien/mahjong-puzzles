@@ -306,9 +306,46 @@ def read_candidates(path: str) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
+def dedupe(candidates: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One row per decision, keeping the first.
+
+    A bank is grown by verifying a fresh slice and exporting it alongside the
+    previous run's output, and the two overlap wherever the mining passes did.
+    Since `puzzle_id` is derived from (gameId, decisionIndex), a duplicate
+    decision is the same puzzle twice — the upload upserts, so it would quietly
+    keep one and the export's own uniqueness guard would refuse the whole run
+    over what is a normal consequence of merging.
+
+    Deliberately keyed on the identity the id is built from rather than on the
+    id: two *different* decisions hashing alike is a real collision and must
+    still fail loudly, which is what the guard downstream is for.
+    """
+    seen: set = set()
+    kept: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        game = str(candidate.get("gameId") or "")
+        index = candidate.get("decisionIndex")
+        key = (game, index) if game and index is not None else None
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(candidate)
+    return kept
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--input", required=True, help="verified candidates JSONL")
+    parser.add_argument(
+        "--input",
+        required=True,
+        nargs="+",
+        help=(
+            "verified candidates JSONL. Several may be given, which is how a "
+            "bank is grown: verify a fresh slice and export it alongside the "
+            "previous run. Decisions present in more than one are kept once."
+        ),
+    )
     parser.add_argument("--output", required=True, help="output directory for the bank")
     parser.add_argument("--shard-size", type=int, default=DEFAULT_SHARD_SIZE)
     parser.add_argument(
@@ -330,7 +367,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    candidates = balance_by_answer(list(read_candidates(args.input)))
+    read = [row for path in args.input for row in read_candidates(path)]
+    candidates = dedupe(read)
+    if len(candidates) != len(read):
+        sys.stderr.write(
+            "read {} rows from {} files, {} distinct decisions\n".format(
+                len(read), len(args.input), len(candidates)
+            )
+        )
+    candidates = balance_by_answer(candidates)
 
     if args.limit and len(candidates) > args.limit:
         # Evenly spaced, so the cap keeps the spread of rounds, kinds and
