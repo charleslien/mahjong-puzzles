@@ -56,6 +56,20 @@ export const UNIT_LABELS: Record<EvalUnit, string> = {
   ukeire_tiles: 'tiles',
 };
 
+/**
+ * What the unit means, for a solver who has not read the About page.
+ *
+ * The panel prints "−6.84 placement pt" and nothing on the page said what a
+ * placement point was — which is the one number the whole site is denominated
+ * in, and the reason folding is sometimes right.
+ */
+export const UNIT_EXPLANATIONS: Record<EvalUnit, string> = {
+  placement_pt:
+    'Expected final placement points: what a choice is worth in the standings ' +
+    'at the end of the game, not just in this hand. Tenhou houou uma, +90 / +45 / 0 / −135.',
+  ukeire_tiles: 'Tiles of acceptance: how many unseen tiles improve the hand.',
+};
+
 export interface GradedAnswer {
   action: PuzzleAction;
   grade: Grade;

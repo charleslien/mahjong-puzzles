@@ -2,7 +2,13 @@ import { useMemo } from 'react';
 
 import { analyzePosition, visibleCounts } from '../lib/analyzePosition';
 import { BRANCH_LABELS, consumedKey, isMultiStep } from '../lib/decision';
-import { GRADE_LABELS, formatLoss, gradeForLoss, type GradedAnswer } from '../lib/grade';
+import {
+  GRADE_LABELS,
+  UNIT_EXPLANATIONS,
+  formatLoss,
+  gradeForLoss,
+  type GradedAnswer,
+} from '../lib/grade';
 import type { PuzzleStats } from '../lib/supabase';
 import { answerTags } from '../lib/tags';
 import { tileToIndex, type Tile } from '../lib/tiles';
@@ -244,7 +250,9 @@ export function Feedback({
       <header className="feedback__head">
         <span className="feedback__grade">{GRADE_LABELS[answer.grade]}</span>
         {!answer.correct && (
-          <span className="feedback__loss">{formatLoss(answer.action.loss, unit)}</span>
+          <span className="feedback__loss" title={UNIT_EXPLANATIONS[unit]}>
+            {formatLoss(answer.action.loss, unit)}
+          </span>
         )}
         <button type="button" className="button button--primary" onClick={onNext} autoFocus>
           Next
@@ -293,8 +301,12 @@ export function Feedback({
             <span className="opt__tile" />
             <span className="opt__label">{showLabels ? 'Option' : 'Tile'}</span>
             <span className="opt__grade" />
-            <span className="opt__delta">vs best</span>
-            <span className="opt__ev">points</span>
+            <span className="opt__delta" title={UNIT_EXPLANATIONS[unit]}>
+              vs best
+            </span>
+            <span className="opt__ev" title={UNIT_EXPLANATIONS[unit]}>
+              points
+            </span>
             <span className="opt__shanten">{showShanten ? 'after' : ''}</span>
             <span className="opt__ukeire">{showUkeire ? 'draws' : ''}</span>
           </li>
