@@ -370,7 +370,8 @@ would score those themes twice.
 
 Picking one starts a session drawn from the whole bank on that theme, through
 the `any_tags` argument the sampling function has taken since it was written and
-the site always passed `null`.
+the site always passed `null`. The drill is a route — `#/t/endgame` — so it
+survives a reload and can be bookmarked.
 
 ## Training
 

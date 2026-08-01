@@ -115,8 +115,8 @@ export function ProgressPanel({
   ).size;
 
   // Ranked by points given up per position. `byId` arrives asynchronously and
-  // holds the most recent 200 puzzles, so this fills in a moment after the panel
-  // and describes recent play rather than all of it.
+  // covers the most recent `RESOLVED_WINDOW` puzzles, so this fills in a moment
+  // after the panel and describes recent play rather than all of it.
   const themes = themeBreakdown(progress.attempts, byId).slice(0, THEMES_SHOWN);
   const worst = themes[0]?.meanLoss ?? 0;
   // The bars are scaled against the worst theme, so a lone row fills its track
