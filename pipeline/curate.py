@@ -32,6 +32,12 @@ Three things happen here, in order:
      one tile further on. Dense mining surfaces all of them. Keeping one
      decision per (game, hand, seat, bucket) is what makes a low stride safe.
 
+     Which one survives is the first, which in principle biases toward the turn
+     a hand *reaches* tenpai over the turns it sits there. Measured on a
+     stride-30 pass over 6,000 games, 34 of 3,906 riichi-capable positions were
+     in a group larger than one, so choosing more cleverly would move 0.9% of
+     them and is not worth a hash.
+
   3. **Quotas.** Each bucket is capped, sampled at an even stride through the
      file rather than from the front, so a cap keeps the spread of games and
      rounds instead of taking the first N logs alphabetically.
