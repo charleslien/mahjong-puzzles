@@ -10,8 +10,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { matches, shuffled } from './puzzleSource';
+import type { Puzzle } from '../types/puzzle';
 
-const puzzle = { kind: 'discard', tags: ['discard', 'endgame', 'close-call'] };
+const puzzle: Pick<Puzzle, 'kind' | 'tags'> = {
+  kind: 'discard',
+  tags: ['discard', 'endgame', 'close-call'],
+};
 
 describe('matches', () => {
   it('lets everything through when nothing is asked for', () => {
@@ -41,7 +45,7 @@ describe('matches', () => {
   });
 
   it('never matches a puzzle with no tags against a tag filter', () => {
-    expect(matches({ kind: 'discard', tags: [] }, undefined, ['endgame'])).toBe(false);
+    expect(matches({ ...puzzle, tags: [] }, undefined, ['endgame'])).toBe(false);
   });
 });
 
