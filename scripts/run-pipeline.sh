@@ -74,7 +74,7 @@ npm run --silent annotate:ukeire -- \
 echo "==> 4/7 select what to verify"
 SELECT_ARGS=()
 for quota in ${QUOTA:-}; do SELECT_ARGS+=(--quota "$quota"); done
-"$PYTHON" -m pipeline.select \
+"$PYTHON" -m pipeline.curate \
   --input "$WORK/annotated.jsonl" --output "$WORK/selected.jsonl" \
   --per-hand "${PER_HAND:-1}" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}"
 

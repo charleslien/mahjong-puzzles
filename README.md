@@ -121,7 +121,7 @@ pipeline/          offline; the data stages are stdlib-only by design
   train.py         policy + value heads, MPS/CUDA/CPU                 [done]
   criteria.py      publication rules: margin, accept set, exclusions  [done]
   mine.py          rank candidates with a trained model               [needs a checkpoint]
-  select.py        spend the verification budget where it is wanted   [done]
+  curate.py        spend the verification budget where it is wanted   [done]
   verify.py        corroborate with akochan, drop disagreements       [needs akochan]
   export.py        emit the site's puzzle bank JSON                   [done]
 
@@ -180,7 +180,7 @@ sample, which made the bank's composition a side effect of a sampling parameter:
 79% discards and 6% riichi, so the site's Riichi filter repeated itself inside a
 single session.
 
-`select.py` separates the two questions. Mine densely, then spend the budget
+`curate.py` separates the two questions. Mine densely, then spend the budget
 where the bank is thin:
 
     QUOTA="riichi=9000 call=0 discard=0" ./scripts/run-pipeline.sh 6000 30

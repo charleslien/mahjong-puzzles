@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from pipeline.select import bucket_of, hand_key, parse_quota, riichi_capable, select
+from pipeline.curate import bucket_of, hand_key, parse_quota, riichi_capable, select
 
 
 def record(**overrides):

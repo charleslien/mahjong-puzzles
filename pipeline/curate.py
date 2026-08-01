@@ -1,5 +1,11 @@
 """Stage 3c: choose which annotated candidates are worth verifying.
 
+(Named `curate` and not the obvious `select` because `unittest discover` puts
+this directory on `sys.path`, where a module called `select` shadows the stdlib
+one that `subprocess` waits on — which broke the akochan tests with a
+`TypeError` from inside `selectors.py` and nothing pointing at the cause.)
+
+
 verify.py is the expensive stage — akochan runs a search per position, at about
 4 positions/s — and it used to see whatever `--stride` happened to sample. That
 made the bank's composition a side effect of a sampling parameter: the shipped
@@ -31,7 +37,7 @@ Three things happen here, in order:
      rounds instead of taking the first N logs alphabetically.
 
 Usage:
-    python -m pipeline.select --input annotated.jsonl --output selected.jsonl \\
+    python -m pipeline.curate --input annotated.jsonl --output selected.jsonl \\
         --quota riichi=9000 --quota call=2000 --quota discard=4000
 """
 
