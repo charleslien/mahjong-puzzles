@@ -206,18 +206,30 @@ mark which discard was being asked about, nor draw the meld a call would make.
 
 ## 9. Remaining
 
-- [ ] **Post-call discards cannot be verified.** akochan evaluates when the seat
-      draws, or when another seat discards or adds to a pon — a discard made
-      immediately after the seat's *own* call matches none of those, so it returns
-      nothing. ~6% of candidates are rejected as `no_akochan_decision_point`.
-      Fixing it means finding an akochan entry point that accepts an arbitrary
-      decision, or reconstructing the call as a `dahai` by the previous seat.
+- [x] **Post-call discards cannot be verified — and the reason is in akochan,
+      not in the bridge.** The open question was whether some other entry point
+      would accept an arbitrary decision. There is not one. `mjai_log` calls
+      `ai_review`, which does *not* gate on the event type — but it delegates to
+      `Selector::set_selector`, which opens with
+
+          assert(type == "tsumo" ||
+                 (type == "dahai" && actor != my_pid) ||
+                 (type == "kakan" && actor != my_pid))
+
+      (`ai_src/selector.cpp:334`), the same condition `pipe_detailed` dispatches
+      on (`main.cpp:212`). So a discard made immediately after the seat's own
+      call is not a state the engine models, in either mode; `triggers_evaluation`
+      mirrors it exactly and rejecting is correct. Recovering these ~6% means
+      adding a post-call branch to akochan's selector, which would be inventing
+      expected values from a code path the engine was not built for. Not planned.
 - [ ] **push/fold is still its own unpopulated kind.** In practice the decision
       shows up inside discard puzzles — folding is simply a discard akochan
       prices highly — so a separate kind may not be worth having. Decide before
       building it.
-- [ ] **Call evaluation is slow.** akochan's fuuro search runs at roughly 0.7
-      positions/s against 5/s for a discard, which now dominates a pipeline run.
+- [x] **Call evaluation is slow**, and now it does not have to dominate a run.
+      akochan's fuuro search runs at roughly 0.7 positions/s against 5/s for a
+      discard. `curate.py` caps how many of each kind reach verification, so a
+      run can skip calls entirely when the bank already has enough of them.
 - [ ] **Redact opponents' hands from shipped `history`.** Real logs carry every
       seat's tiles. The board never renders them before an answer, but they are in
       the JSON. Redaction has to keep tile *counts* intact or the replay cannot
