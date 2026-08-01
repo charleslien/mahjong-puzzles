@@ -121,6 +121,7 @@ pipeline/          offline; the data stages are stdlib-only by design
   train.py         policy + value heads, MPS/CUDA/CPU                 [done]
   criteria.py      publication rules: margin, accept set, exclusions  [done]
   mine.py          rank candidates with a trained model               [needs a checkpoint]
+  select.py        spend the verification budget where it is wanted   [done]
   verify.py        corroborate with akochan, drop disagreements       [needs akochan]
   export.py        emit the site's puzzle bank JSON                   [done]
 
@@ -131,6 +132,7 @@ src/lib/           the mahjong core, shared by site and generators
   replay.ts        mjai event stream -> steppable snapshots
   grade.ts         loss -> grade buckets, per-unit thresholds
   decision.ts      flat action list -> the steps a player meets
+  weakness.ts      a history -> which themes cost the solver points
   puzzleSource.ts  the bank, from Supabase or from the committed JSON
 
 src/components/
@@ -169,6 +171,31 @@ bank, working perfectly, showing puzzles that no longer exist on disk. The uploa
 is therefore a step of `run-pipeline.sh` rather than something to remember, and
 `upload-bank.mjs` prunes rows the new bank no longer contains and then checks the
 table count against it.
+
+### What gets verified is chosen, not sampled
+
+akochan is the expensive stage — a search per position, about 4/s — so it sets
+how large a run can be. It used to see whatever `mine.py --stride` happened to
+sample, which made the bank's composition a side effect of a sampling parameter:
+79% discards and 6% riichi, so the site's Riichi filter repeated itself inside a
+single session.
+
+`select.py` separates the two questions. Mine densely, then spend the budget
+where the bank is thin:
+
+    QUOTA="riichi=9000 call=0 discard=0" ./scripts/run-pipeline.sh 6000 30
+
+It labels each candidate with the puzzle it would *become* rather than the
+decision it was extracted as. akochan still has the final say — a position is
+only a riichi puzzle if akochan offers a declaration — so the label is a
+prefilter, and a false positive costs nothing: it publishes as an ordinary
+discard puzzle. Measured against a full run it caught 152 of the 154 positions
+akochan turned into riichi puzzles, and the two it missed were hands holding a
+concealed kan, which leaves the hand closed and riichi legal.
+
+Dense mining also needs thinning, because a tenpai hand stays tenpai:
+consecutive decisions in one hand are the same wait one tile further on. One
+decision per (game, hand, seat, bucket) survives.
 
 ### Two evaluation units, never mixed
 
@@ -283,6 +310,23 @@ server to aggregate across users. This site is static, so difficulty is a
 model-derived proxy from evaluation margin, policy entropy, and whether the naive
 baseline fails. The schema is shaped so real ratings can be added later without a
 migration.
+
+### Where a solver loses points
+
+The progress panel could say how often you were right and not what you were
+wrong *about*, which is the only part of a history that says what to practise
+next. Every puzzle carries its themes, so the data was there and unused.
+
+Themes are ranked by mean placement points given up per position, not by the
+share answered optimally: accuracy treats a 0.5-point inaccuracy and a 12-point
+blunder as the same event, and placement points are the unit the whole bank is
+built and graded in. Only a solver's first attempt at a position counts — a
+review drill replays exactly the ones you got wrong, so counting every attempt
+would score those themes twice.
+
+Picking one starts a session drawn from the whole bank on that theme, through
+the `any_tags` argument the sampling function has taken since it was written and
+the site always passed `null`.
 
 ## Training
 

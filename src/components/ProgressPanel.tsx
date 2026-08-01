@@ -4,10 +4,14 @@ import { GRADE_LABELS, type Grade } from '../lib/grade';
 import { fetchMyRating, type PlayerRating } from '../lib/supabase';
 import { summarize, type Progress } from '../lib/progress';
 import type { PuzzleSource } from '../lib/puzzleSource';
+import { themeBreakdown, themeLabel } from '../lib/weakness';
 import type { Puzzle } from '../types/puzzle';
 import { ActionLabel } from './ActionLabel';
 
 const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
+
+/** How many themes to list. Past this it stops being a shortlist to work from. */
+const THEMES_SHOWN = 6;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -32,11 +36,14 @@ export function ProgressPanel({
   progress,
   source,
   onReviewMistakes,
+  onDrillTheme,
   onClear,
 }: {
   progress: Progress;
   source: PuzzleSource;
   onReviewMistakes: () => void;
+  /** Start a session drawn from one theme. */
+  onDrillTheme: (tag: string) => void;
   onClear: () => void;
 }) {
   const summary = summarize(progress);
@@ -92,6 +99,16 @@ export function ProgressPanel({
     progress.attempts.filter((attempt) => attempt.grade !== 'optimal').map((a) => a.puzzleId),
   ).size;
 
+  // Ranked by points given up per position. `byId` arrives asynchronously and
+  // holds the most recent 200 puzzles, so this fills in a moment after the panel
+  // and describes recent play rather than all of it.
+  const themes = themeBreakdown(progress.attempts, byId).slice(0, THEMES_SHOWN);
+  const worst = themes[0]?.meanLoss ?? 0;
+  // The bars are scaled against the worst theme, so a lone row fills its track
+  // by construction and reads as an alarm about nothing. A comparison needs two
+  // things to compare.
+  const comparable = themes.length >= 2;
+
   return (
     <>
       <section className="panel">
@@ -135,6 +152,44 @@ export function ProgressPanel({
           })}
         </ul>
       </section>
+
+      {comparable && (
+        <section className="panel">
+          <div className="panel__head">
+            <h2>Where you lose points</h2>
+            <p className="muted">
+              Placement points given up per position, on your first attempt at each.
+            </p>
+          </div>
+          <ul className="themes">
+            {themes.map((theme) => (
+              <li key={theme.tag} className="theme">
+                <span className="theme__name">{themeLabel(theme.tag)}</span>
+                <span className="theme__track">
+                  {/* Relative to the worst theme, not to an absolute scale: what
+                      the row is for is comparing themes with each other, and no
+                      fixed ceiling would be honest across solvers. */}
+                  <span
+                    className="theme__fill"
+                    style={{ width: `${worst > 0 ? (theme.meanLoss / worst) * 100 : 0}%` }}
+                  />
+                </span>
+                <span className="theme__cost">{theme.meanLoss.toFixed(1)}</span>
+                <span className="theme__count">
+                  {theme.optimal}/{theme.attempts} best
+                </span>
+                <button
+                  type="button"
+                  className="button button--small"
+                  onClick={() => onDrillTheme(theme.tag)}
+                >
+                  Drill
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="panel">
         <div className="panel__head">

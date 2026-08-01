@@ -1454,6 +1454,73 @@ kbd {
   color: var(--text-muted);
 }
 
+/* Which themes a solver gives up the most placement points on. Laid out like a
+   gradebar so the two lists on the page read as one family, with room for the
+   figure the row is actually ranked by. */
+.themes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.theme {
+  display: grid;
+  grid-template-columns: 8rem 1fr 3rem 5rem auto;
+  gap: 0.6rem;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.theme__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme__track {
+  background: var(--surface-2);
+  border-radius: 999px;
+  height: 0.5rem;
+  overflow: hidden;
+}
+
+.theme__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  /* The scale runs worst-first, so every bar is a cost. One colour throughout
+     rather than the grade palette: these are not graded events. */
+  background: var(--grade-mistake);
+}
+
+.theme__cost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.theme__count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* Narrow: the bar is the first thing worth dropping, since the figure beside it
+   says the same in less room. */
+@media (max-width: 33rem) {
+  .theme {
+    grid-template-columns: 1fr 3rem auto;
+  }
+
+  .theme__track,
+  .theme__count {
+    display: none;
+  }
+}
+
 /* Everything you have played, newest first. */
 .history {
   list-style: none;

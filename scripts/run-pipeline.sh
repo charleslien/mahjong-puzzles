@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build a puzzle bank end to end: logs -> decisions -> candidates -> ukeire
-# annotation -> akochan verification -> sharded JSON.
+# annotation -> selection -> akochan verification -> sharded JSON.
 #
 #   ./scripts/run-pipeline.sh [games] [stride]
 #
@@ -50,23 +50,37 @@ fi
 
 mkdir -p "$WORK"
 
-echo "==> 1/6 extract ($GAMES games from offset $SKIP)"
+echo "==> 1/7 extract ($GAMES games from offset $SKIP)"
 "$PYTHON" -m pipeline.extract \
   --input "$LOGS" --output "$WORK/decisions.jsonl.gz" \
   --skip "$SKIP" --limit "$GAMES" --skip-errors
 
-echo "==> 2/6 mine (every ${STRIDE}th decision)"
+echo "==> 2/7 mine (every ${STRIDE}th decision)"
 "$PYTHON" -m pipeline.mine \
   --input "$WORK/decisions.jsonl.gz" --output "$WORK/candidates.jsonl" \
   --checkpoint "$CHECKPOINT" --stride "$STRIDE"
 
-echo "==> 3/6 annotate with the ukeire baseline"
+echo "==> 3/7 annotate with the ukeire baseline"
 npm run --silent annotate:ukeire -- \
   --input "$WORK/candidates.jsonl" --output "$WORK/annotated.jsonl"
 
-echo "==> 4/6 verify with akochan"
+# Verification is the expensive stage, so what it sees is chosen rather than
+# whatever --stride happened to sample. With no QUOTA set this only thins
+# near-duplicate turns out of the same hand, which is a no-op at a wide stride;
+# set it to spend the budget on a kind the bank is short of, e.g.
+#
+#   QUOTA="riichi=9000 call=0 discard=0" ./scripts/run-pipeline.sh 6000 30
+#
+echo "==> 4/7 select what to verify"
+SELECT_ARGS=()
+for quota in ${QUOTA:-}; do SELECT_ARGS+=(--quota "$quota"); done
+"$PYTHON" -m pipeline.select \
+  --input "$WORK/annotated.jsonl" --output "$WORK/selected.jsonl" \
+  --per-hand "${PER_HAND:-1}" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}"
+
+echo "==> 5/7 verify with akochan"
 "$PYTHON" -m pipeline.verify \
-  --input "$WORK/annotated.jsonl" --output "$WORK/verified.jsonl" \
+  --input "$WORK/selected.jsonl" --output "$WORK/verified.jsonl" \
   --logs "$LOGS" --akochan "$AKOCHAN" \
   --reject-log "$WORK/rejects.jsonl" --progress-every 250
 
@@ -75,12 +89,12 @@ echo "==> 4/6 verify with akochan"
 # offline fallback — downloaded whole, and committed — so it is capped.
 FALLBACK_SIZE="${FALLBACK_SIZE:-1200}"
 
-echo "==> 5/6 export (full bank for the database)"
+echo "==> 6/7 export (full bank for the database)"
 "$PYTHON" -m pipeline.export \
   --input "$WORK/verified.jsonl" --output "$WORK/bank" \
   --generated-at "$(date +%Y-%m-%d)"
 
-echo "==> 5b/6 export (capped bundle for the offline fallback)"
+echo "==> 6b/7 export (capped bundle for the offline fallback)"
 "$PYTHON" -m pipeline.export \
   --input "$WORK/verified.jsonl" --output public/puzzles \
   --limit "$FALLBACK_SIZE" --generated-at "$(date +%Y-%m-%d)"
@@ -90,7 +104,7 @@ echo "==> 5b/6 export (capped bundle for the offline fallback)"
 # visible failure — the site works, it just shows puzzles that no longer exist —
 # so the upload belongs in the pipeline rather than in someone's memory.
 if [ -n "${SUPABASE_SECRET_KEY:-}" ] && [ -f .env.local ]; then
-  echo "==> 6/6 upload to Supabase"
+  echo "==> 7/7 upload to Supabase"
   node --env-file=.env.local scripts/upload-bank.mjs --bank "$WORK/bank"
 else
   echo

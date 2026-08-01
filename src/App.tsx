@@ -90,6 +90,14 @@ export default function App() {
   const [kindFilter, setKindFilter] = useState<(typeof KINDS)[number]['id']>('all');
   // When set, the session replays exactly these puzzles instead of sampling.
   const [drill, setDrill] = useState<string[]>();
+  /**
+   * A theme the session is narrowed to, chosen from the progress breakdown.
+   *
+   * Deliberately not a row of chips beside the kind filter: there are eleven
+   * themes and no reason to browse them, but a strong reason to practise the one
+   * your own history says is costing you points.
+   */
+  const [theme, setTheme] = useState<string>();
   // A fresh order per visit. This was a constant, so every reload dealt the
   // identical shuffle and reopened the same puzzle — the site looked like it had
   // one position in it.
@@ -148,6 +156,7 @@ export default function App() {
     let live = true;
     const selected = DIFFICULTY_BANDS.find((candidate) => candidate.id === band)!;
     const kinds = KINDS.find((candidate) => candidate.id === kindFilter)!.kinds;
+    const tags = theme ? [theme] : undefined;
 
     void (async () => {
       try {
@@ -157,6 +166,7 @@ export default function App() {
             minDifficulty: selected.min,
             maxDifficulty: selected.max,
             kinds: kinds ? [...kinds] : undefined,
+            tags,
             onlyIds: drill,
             // Answered puzzles go to the back rather than being dropped, so a
             // session never runs out.
@@ -164,7 +174,7 @@ export default function App() {
           }),
           drill
             ? Promise.resolve(drill.length)
-            : source.count(selected.min, selected.max, kinds ? [...kinds] : undefined),
+            : source.count(selected.min, selected.max, kinds ? [...kinds] : undefined, tags),
         ]);
         if (!live) return;
         setSession(puzzles);
@@ -187,7 +197,7 @@ export default function App() {
     // `progress` is read but deliberately not a dependency: refetching the moment
     // an answer lands would replace the puzzle still on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, band, kindFilter, seed, drill]);
+  }, [source, band, kindFilter, theme, seed, drill]);
 
   // A permalinked puzzle takes precedence over wherever the session sits, and
   // may not be in the sampled page at all, so it is fetched by id.
@@ -304,6 +314,22 @@ export default function App() {
     setDrill(undefined);
     setAnswer(undefined);
     setCursor(0);
+  }, []);
+
+  /**
+   * Practise one theme, drawn from the whole bank rather than from your history.
+   *
+   * The kind filter is cleared with it: "endgame" and "Riichi" together can
+   * genuinely match nothing, and an empty board is a worse answer to "drill
+   * this" than a wider session is.
+   */
+  const drillTheme = useCallback((tag: string) => {
+    setTheme(tag);
+    setKindFilter('all');
+    setDrill(undefined);
+    setAnswer(undefined);
+    setCursor(0);
+    window.location.hash = '#/train';
   }, []);
 
   /**
@@ -434,6 +460,16 @@ export default function App() {
               </p>
             )}
 
+            {theme && !drill && !linked && (
+              <p className="permalink-note">
+                Drilling <strong>{theme.replace(/-/g, ' ')}</strong> positions, drawn from the whole
+                bank.{' '}
+                <button type="button" className="linkbutton" onClick={() => setTheme(undefined)}>
+                  Back to a normal session
+                </button>
+              </p>
+            )}
+
             {drill && !linked && (
               <p className="permalink-note">
                 Reviewing {drill.length} puzzle{drill.length === 1 ? '' : 's'} you missed, hardest
@@ -478,6 +514,7 @@ export default function App() {
             progress={progress}
             source={source}
             onReviewMistakes={reviewMistakes}
+            onDrillTheme={drillTheme}
             onClear={() => setProgress(clearProgress())}
           />
         )}
