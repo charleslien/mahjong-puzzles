@@ -59,9 +59,15 @@ extract.py                  mjai logs -> decision records (position + action tak
 train.py                    fit the candidate-finding network on those records
 mine.py                     rank legal discards with the model
 ../scripts/annotate-ukeire  attach the tile-efficiency baseline (TypeScript)
+curate.py                   choose what is worth verifying, by kind
 akochan.py / verify.py      re-score with akochan; drop disagreements
 export.py                   emit public/puzzles/*.json against the site schema
 ```
+
+`curate.py` exists because verification is the expensive stage and used to see
+whatever `--stride` happened to sample, which made the bank's composition a side
+effect of a sampling parameter. Mine densely, then spend the budget on the kind
+the bank is short of.
 
 Run the whole chain with `../scripts/run-pipeline.sh`, which is also the record of
 the exact invocations. Each stage reads and writes JSONL under `data/`, so stages
@@ -85,9 +91,10 @@ evaluators disagreed on the best action**, 5% for having no akochan decision
 point, 5% for too many equally good answers, and 2% for being too deep in the
 endgame.
 
-`TODO.md` covers what remains: post-call discards have no akochan decision point,
-call and push/fold kinds are still unpopulated, and shipped history is
-unredacted.
+`TODO.md` covers what remains: push/fold is still its own unpopulated kind, and
+shipped history is unredacted. Post-call discards are closed rather than
+outstanding — akochan's selector asserts on the last action type in both of its
+modes, so those positions are not a state the engine models.
 
 ## A warning about akochan
 
