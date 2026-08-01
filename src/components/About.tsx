@@ -75,6 +75,12 @@ export function About({ meta }: { meta: BankMeta }) {
         and lets your results count toward how hard each puzzle is rated. You can use the whole site
         without an account.
       </p>
+      <p>
+        Once you have played enough hands, Progress ranks the kinds of position by the placement
+        points you give up on each — which is a more useful thing to know than how often you were
+        right, since a near-miss and a disaster both count as one wrong answer. You can practise any
+        of them.
+      </p>
 
       <p className="muted">
         Hands are used under CC BY 4.0. <a href="https://github.com/charleslien/mahjong-puzzles">
