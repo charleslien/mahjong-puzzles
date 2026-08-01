@@ -13,6 +13,15 @@ const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blund
 /** How many themes to list. Past this it stops being a shortlist to work from. */
 const THEMES_SHOWN = 6;
 
+/**
+ * How far back the panel resolves puzzles for.
+ *
+ * Local history holds up to 2,000 attempts and the ids travel in a request, so
+ * something has to bound it. Five hundred is several months of ordinary play and
+ * the panel says so rather than quietly describing a slice.
+ */
+const RESOLVED_WINDOW = 500;
+
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="stat">
@@ -51,10 +60,16 @@ export function ProgressPanel({
   // The puzzles behind your history are not necessarily the ones in the current
   // session, so they are fetched by id. Until they arrive the list still renders
   // — with action ids instead of labels — rather than showing nothing.
+  //
+  // Bounded because the ids travel in a request, and the breakdown below is only
+  // as complete as this map: a theme is invisible to it if the puzzles carrying
+  // it fell off the end. `RESOLVED_WINDOW` is what the panel then says it covers.
   const [byId, setById] = useState<Map<string, Puzzle>>(new Map());
   useEffect(() => {
     let live = true;
-    const ids = [...new Set(progress.attempts.map((attempt) => attempt.puzzleId))].slice(-200);
+    const ids = [...new Set(progress.attempts.map((attempt) => attempt.puzzleId))].slice(
+      -RESOLVED_WINDOW,
+    );
     if (!ids.length) return;
     source
       .byIds(ids)
@@ -158,7 +173,11 @@ export function ProgressPanel({
           <div className="panel__head">
             <h2>Where you lose points</h2>
             <p className="muted">
-              Placement points given up per position, on your first attempt at each.
+              Placement points given up per position, on your first attempt at each
+              {summary.attempted > RESOLVED_WINDOW
+                ? ` of your last ${RESOLVED_WINDOW}`
+                : ''}
+              .
             </p>
           </div>
           <ul className="themes">

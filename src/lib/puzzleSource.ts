@@ -297,9 +297,21 @@ export const supabaseSource: PuzzleSource = {
   async byIds(ids) {
     if (!ids.length) return [];
     const db = await supabase();
-    const { data, error } = await db.from('puzzles').select('*').in('id', ids.slice(0, 500));
-    if (error) throw new Error(`puzzles: ${error.message}`);
-    return ((data ?? []) as Record<string, unknown>[]).map(fromRow);
+    // Paged. The id list travels in the query string, so one request cannot hold
+    // an unbounded history — but truncating it at 500 and returning what fits
+    // meant a caller asking about 600 puzzles got 400 of them treated as though
+    // they had left the bank, with nothing said.
+    const PER_REQUEST = 200;
+    const found: Puzzle[] = [];
+    for (let start = 0; start < ids.length; start += PER_REQUEST) {
+      const { data, error } = await db
+        .from('puzzles')
+        .select('*')
+        .in('id', ids.slice(start, start + PER_REQUEST));
+      if (error) throw new Error(`puzzles: ${error.message}`);
+      found.push(...((data ?? []) as Record<string, unknown>[]).map(fromRow));
+    }
+    return found;
   },
 
   async stats(ids) {
