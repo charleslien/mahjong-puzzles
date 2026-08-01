@@ -502,8 +502,15 @@ export default function App() {
               />
             ) : (
               <section className="panel">
-                <h2>No puzzles in this band</h2>
-                <p className="muted">Try a different difficulty.</p>
+                {/* Named, because the filters combine: a theme and a kind can
+                    each hold hundreds of puzzles and share none, and "try a
+                    different difficulty" then points at the wrong control. */}
+                <h2>Nothing matches these filters</h2>
+                <p className="muted">
+                  No {theme ? `${theme.replace(/-/g, ' ')} ` : ''}
+                  {kindFilter === 'all' ? 'positions' : `${kindFilter} positions`}
+                  {band === 'all' ? '' : ` in the ${band} band`}. Widen one of them.
+                </p>
               </section>
             )}
           </>
