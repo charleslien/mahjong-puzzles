@@ -3,9 +3,8 @@ import { useEffect, useState } from 'react';
 import { GRADE_LABELS, type Grade } from '../lib/grade';
 import { fetchMyRating, type PlayerRating } from '../lib/supabase';
 import { summarize, type Progress } from '../lib/progress';
-import type { PuzzleSource } from '../lib/puzzleSource';
+import type { PuzzleOutline, PuzzleSource, PuzzleTheme } from '../lib/puzzleSource';
 import { themeBreakdown, themeLabel } from '../lib/weakness';
-import type { Puzzle } from '../types/puzzle';
 import { ActionLabel } from './ActionLabel';
 
 const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blunder'];
@@ -14,13 +13,23 @@ const GRADE_ORDER: Grade[] = ['optimal', 'good', 'inaccuracy', 'mistake', 'blund
 const THEMES_SHOWN = 6;
 
 /**
- * How far back the panel resolves puzzles for.
+ * How far back the theme breakdown looks.
  *
  * Local history holds up to 2,000 attempts and the ids travel in a request, so
  * something has to bound it. Five hundred is several months of ordinary play and
- * the panel says so rather than quietly describing a slice.
+ * the panel says so rather than quietly describing a slice. Cheap to ask for:
+ * a theme needs a kind and some tags, 61 bytes a puzzle.
  */
 const RESOLVED_WINDOW = 500;
+
+/**
+ * How many hands the list names.
+ *
+ * Naming a play needs the puzzle's options, which are 1.9 kB a row — thirty
+ * times what a theme costs — and a scroll box holding hundreds of rows is not
+ * something anyone reads to the bottom.
+ */
+const HISTORY_SHOWN = 150;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -64,15 +73,29 @@ export function ProgressPanel({
   // Bounded because the ids travel in a request, and the breakdown below is only
   // as complete as this map: a theme is invisible to it if the puzzles carrying
   // it fell off the end. `RESOLVED_WINDOW` is what the panel then says it covers.
-  const [byId, setById] = useState<Map<string, Puzzle>>(new Map());
+  const [themesById, setThemesById] = useState<Map<string, PuzzleTheme>>(new Map());
+  const [byId, setById] = useState<Map<string, PuzzleOutline>>(new Map());
   useEffect(() => {
     let live = true;
-    const ids = [...new Set(progress.attempts.map((attempt) => attempt.puzzleId))].slice(
-      -RESOLVED_WINDOW,
-    );
-    if (!ids.length) return;
+    // Sorted rather than trusting the stored order. `recordAttempt` appends, so
+    // the array happens to be chronological — but "the newest 150" and "the last
+    // 150 in the array" are only the same thing by that accident, and if it ever
+    // stopped holding, the list would ask for one set of puzzles and render
+    // another.
+    const unique = [
+      ...new Set(
+        [...progress.attempts].sort((a, b) => b.at - a.at).map((attempt) => attempt.puzzleId),
+      ),
+    ];
+    if (!unique.length) return;
     source
-      .byIds(ids)
+      .themesOf(unique.slice(0, RESOLVED_WINDOW))
+      .then((found) => {
+        if (live) setThemesById(new Map(found.map((puzzle) => [puzzle.id, puzzle])));
+      })
+      .catch(() => undefined);
+    source
+      .outlines(unique.slice(0, HISTORY_SHOWN))
       .then((found) => {
         if (live) setById(new Map(found.map((puzzle) => [puzzle.id, puzzle])));
       })
@@ -107,7 +130,7 @@ export function ProgressPanel({
   }
 
   // Newest first, so the most recent hand is the easiest one to go back to.
-  const history = [...progress.attempts].sort((a, b) => b.at - a.at);
+  const history = [...progress.attempts].sort((a, b) => b.at - a.at).slice(0, HISTORY_SHOWN);
   // Distinct puzzles answered less than optimally — what a review drill would
   // contain, so the button can say how much work it is.
   const missed = new Set(
@@ -117,7 +140,7 @@ export function ProgressPanel({
   // Ranked by points given up per position. `byId` arrives asynchronously and
   // covers the most recent `RESOLVED_WINDOW` puzzles, so this fills in a moment
   // after the panel and describes recent play rather than all of it.
-  const themes = themeBreakdown(progress.attempts, byId).slice(0, THEMES_SHOWN);
+  const themes = themeBreakdown(progress.attempts, themesById).slice(0, THEMES_SHOWN);
   const worst = themes[0]?.meanLoss ?? 0;
   // The bars are scaled against the worst theme, so a lone row fills its track
   // by construction and reads as an alarm about nothing. A comparison needs two

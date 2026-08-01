@@ -47,6 +47,12 @@ export interface SessionRequest {
   excludeIds?: string[];
 }
 
+/** What a puzzle was about — the least the theme breakdown can work from. */
+export type PuzzleTheme = Pick<Puzzle, 'id' | 'kind' | 'tags'>;
+
+/** That, plus the options, so a played action can be named. */
+export type PuzzleOutline = PuzzleTheme & Pick<Puzzle, 'actions'>;
+
 export interface BankMeta {
   count: number;
   generatedAt: string;
@@ -67,6 +73,23 @@ export interface PuzzleSource {
   ): Promise<number>;
   byId(id: string): Promise<Puzzle | undefined>;
   byIds(ids: string[]): Promise<Puzzle[]>;
+  /**
+   * Just enough to say what a puzzle *was about*.
+   *
+   * The theme breakdown needs a kind and some tags across a solver's whole
+   * recent history, and nothing else. Measured over the shipped bank a full row
+   * averages 6.2 kB — `history` is 3.2 kB of it and `actions` 1.9 kB — against
+   * 61 bytes for these three fields, so asking for whole puzzles to draw five
+   * bars cost 3 MB.
+   */
+  themesOf(ids: string[]): Promise<PuzzleTheme[]>;
+  /**
+   * Enough to name the play someone made, for the history list.
+   *
+   * Carries `actions`, which is what turns `discard:5p` into a tile and a
+   * label, and still leaves out the hand history nothing on that page replays.
+   */
+  outlines(ids: string[]): Promise<PuzzleOutline[]>;
   stats(ids: string[]): Promise<Map<string, PuzzleStats>>;
 }
 
@@ -186,6 +209,15 @@ export const staticSource: PuzzleSource = {
     return puzzles.filter((puzzle) => wanted.has(puzzle.id));
   },
 
+  // The whole bank is already in memory, so there is nothing to trim.
+  async themesOf(ids) {
+    return this.byIds(ids);
+  },
+
+  async outlines(ids) {
+    return this.byIds(ids);
+  },
+
   async stats() {
     // No database, so no community difficulty. Not an error.
     return new Map();
@@ -225,6 +257,30 @@ function fromRow(row: Record<string, unknown>): Puzzle {
  * smaller cost than a request that fails.
  */
 const MAX_EXCLUSIONS = 400;
+
+/**
+ * Fetch many puzzles by id, in pages.
+ *
+ * The id list travels in the query string, so one request cannot hold an
+ * unbounded history. This used to slice its argument to 500 and return what fit,
+ * so a caller asking about 600 got 400 of them treated as though they had left
+ * the bank, with nothing said.
+ */
+async function fetchRows(ids: string[], columns: string): Promise<Puzzle[]> {
+  if (!ids.length) return [];
+  const db = await supabase();
+  const PER_REQUEST = 200;
+  const found: Puzzle[] = [];
+  for (let start = 0; start < ids.length; start += PER_REQUEST) {
+    const { data, error } = await db
+      .from('puzzles')
+      .select(columns)
+      .in('id', ids.slice(start, start + PER_REQUEST));
+    if (error) throw new Error(`puzzles: ${error.message}`);
+    found.push(...((data ?? []) as unknown as Record<string, unknown>[]).map(fromRow));
+  }
+  return found;
+}
 
 export const supabaseSource: PuzzleSource = {
   kind: 'supabase',
@@ -295,23 +351,15 @@ export const supabaseSource: PuzzleSource = {
   },
 
   async byIds(ids) {
-    if (!ids.length) return [];
-    const db = await supabase();
-    // Paged. The id list travels in the query string, so one request cannot hold
-    // an unbounded history — but truncating it at 500 and returning what fits
-    // meant a caller asking about 600 puzzles got 400 of them treated as though
-    // they had left the bank, with nothing said.
-    const PER_REQUEST = 200;
-    const found: Puzzle[] = [];
-    for (let start = 0; start < ids.length; start += PER_REQUEST) {
-      const { data, error } = await db
-        .from('puzzles')
-        .select('*')
-        .in('id', ids.slice(start, start + PER_REQUEST));
-      if (error) throw new Error(`puzzles: ${error.message}`);
-      found.push(...((data ?? []) as Record<string, unknown>[]).map(fromRow));
-    }
-    return found;
+    return fetchRows(ids, '*');
+  },
+
+  async themesOf(ids) {
+    return fetchRows(ids, 'id,kind,tags');
+  },
+
+  async outlines(ids) {
+    return fetchRows(ids, 'id,kind,tags,actions');
   },
 
   async stats(ids) {

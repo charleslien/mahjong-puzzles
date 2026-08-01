@@ -1,5 +1,5 @@
 import type { AttemptRecord } from './progress';
-import type { Puzzle } from '../types/puzzle';
+import type { PuzzleTheme } from './puzzleSource';
 
 /**
  * What a solver's history says about which positions cost them points.
@@ -59,7 +59,7 @@ export function firstAttempts(attempts: AttemptRecord[]): AttemptRecord[] {
  */
 export function themeBreakdown(
   attempts: AttemptRecord[],
-  puzzles: Map<string, Puzzle>,
+  puzzles: Map<string, PuzzleTheme>,
   minAttempts: number = MIN_ATTEMPTS,
 ): Theme[] {
   const totals = new Map<string, { attempts: number; optimal: number; loss: number }>();
