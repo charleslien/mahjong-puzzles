@@ -202,6 +202,12 @@ export default function App() {
   // A permalinked puzzle takes precedence over wherever the session sits, and
   // may not be in the sampled page at all, so it is fetched by id.
   useEffect(() => {
+    // Whichever way this effect goes, the puzzle on screen is about to change,
+    // and an answer belongs to the puzzle it was given for. Going from one
+    // permalink straight to another is a hash change and not a reload, so the
+    // previous grade stayed up: the new position opened already answered, with
+    // the old hand's verdict over the new hand's options.
+    setAnswer(undefined);
     if (!source || !route.puzzleId) {
       setLinked(undefined);
       setLinkMissing(false);
