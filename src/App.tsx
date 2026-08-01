@@ -400,9 +400,14 @@ export default function App() {
           <section className="panel panel--error">
             <h2>Could not load the puzzle bank</h2>
             <p>{error}</p>
+            {/* The mined bank is committed, so a missing one means a local
+                checkout without it. `build:seed` was renamed long ago and this
+                told anyone who hit the error to run a script that does not
+                exist. */}
             <p className="muted">
-              If you are running this locally, generate the bank first with{' '}
-              <code>npm run build:seed</code>.
+              The bundled bank lives in <code>public/puzzles/</code>. Rebuild it with{' '}
+              <code>./scripts/run-pipeline.sh</code>, or an efficiency-only one with{' '}
+              <code>npm run build:puzzles -- pipeline/data/2010 200</code>.
             </p>
           </section>
         )}
