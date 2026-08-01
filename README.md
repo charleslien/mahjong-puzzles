@@ -48,8 +48,8 @@ asset reference goes through `import.meta.env.BASE_URL`, so hosting under a
 subpath only needs `BASE_PATH` set at build time — GitHub Pages, for instance,
 would want `BASE_PATH=/mahjong-puzzles/`.
 
-Routing is hash-based (`#/train`, `#/progress`, `#/about`, `#/p/<id>`), so no SPA
-rewrite rules are required.
+Routing is hash-based (`#/train`, `#/progress`, `#/about`, `#/p/<id>`,
+`#/t/<theme>`), so no SPA rewrite rules are required.
 
 `.github/workflows/ci.yml` only runs types, tests and a build. Deployment is
 Vercel's job.
