@@ -33,11 +33,20 @@ type View = 'train' | 'progress' | 'about';
 interface Route {
   view: View;
   puzzleId?: string;
+  /**
+   * A theme the session is drawn from.
+   *
+   * In the route rather than in component state so that a drill survives a
+   * reload and can be bookmarked or shared. Held in state it vanished on
+   * refresh, silently, which is a confusing thing for a mode to do.
+   */
+  theme?: string;
 }
 
 function parseHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   if (hash.startsWith('p/')) return { view: 'train', puzzleId: hash.slice(2) };
+  if (hash.startsWith('t/')) return { view: 'train', theme: decodeURIComponent(hash.slice(2)) };
   if (hash === 'progress') return { view: 'progress' };
   if (hash === 'about') return { view: 'about' };
   return { view: 'train' };
@@ -95,9 +104,10 @@ export default function App() {
    *
    * Deliberately not a row of chips beside the kind filter: there are eleven
    * themes and no reason to browse them, but a strong reason to practise the one
-   * your own history says is costing you points.
+   * your own history says is costing you points. It lives in the route, so
+   * `#/t/endgame` is a bookmarkable drill.
    */
-  const [theme, setTheme] = useState<string>();
+  const theme = route.theme;
   // A fresh order per visit. This was a constant, so every reload dealt the
   // identical shuffle and reopened the same puzzle — the site looked like it had
   // one position in it.
@@ -330,12 +340,11 @@ export default function App() {
    * this" than a wider session is.
    */
   const drillTheme = useCallback((tag: string) => {
-    setTheme(tag);
     setKindFilter('all');
     setDrill(undefined);
     setAnswer(undefined);
     setCursor(0);
-    window.location.hash = '#/train';
+    window.location.hash = `#/t/${encodeURIComponent(tag)}`;
   }, []);
 
   /**
@@ -469,10 +478,7 @@ export default function App() {
             {theme && !drill && !linked && (
               <p className="permalink-note">
                 Drilling <strong>{theme.replace(/-/g, ' ')}</strong> positions, drawn from the whole
-                bank.{' '}
-                <button type="button" className="linkbutton" onClick={() => setTheme(undefined)}>
-                  Back to a normal session
-                </button>
+                bank. <a href="#/train">Back to a normal session</a>
               </p>
             )}
 
