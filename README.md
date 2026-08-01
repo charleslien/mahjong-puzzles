@@ -188,14 +188,8 @@ where the bank is thin:
     QUOTA="riichi=9000 call=0 discard=0" MAX_SHANTEN=0 \
       ./scripts/run-pipeline.sh 6000 30
 
-`MAX_SHANTEN=0` is the same idea one stage earlier: annotation computes
-acceptance over fourteen discards per hand, but decides from a single shanten
-call whether the hand is tenpai at all, so a riichi-aimed pass can skip ~90% of
-that work. Measured on a 2,000-candidate slice: 21.7s to 3.7s, finding exactly
-the same 57 riichi-capable positions.
-
-It labels each candidate with the puzzle it would *become* rather than the
-decision it was extracted as. akochan still has the final say — a position is
+`curate.py` labels each candidate with the puzzle it would *become* rather than
+the decision it was extracted as. akochan still has the final say — a position is
 only a riichi puzzle if akochan offers a declaration — so the label is a
 prefilter, and a false positive costs nothing: it publishes as an ordinary
 discard puzzle. Measured against a full run it caught 152 of the 154 positions
@@ -205,6 +199,17 @@ concealed kan, which leaves the hand closed and riichi legal.
 Dense mining also needs thinning, because a tenpai hand stays tenpai:
 consecutive decisions in one hand are the same wait one tile further on. One
 decision per (game, hand, seat, bucket) survives.
+
+`MAX_SHANTEN=0` is the same idea one stage earlier. Annotation computes
+acceptance over fourteen discards per hand, but decides from a single shanten
+call whether the hand is tenpai at all — so a riichi-aimed pass can skip most of
+that work. Measured on a 2,000-candidate slice: 21.7s to 3.7s, finding exactly
+the same 57 riichi-capable positions.
+
+Growing one kind alone skews the bank: a riichi-only pass took riichi from 6% of
+the bank to 47%, which misrepresents the game — every turn is a discard and
+riichi comes up once or twice a hand. Top the others up in a second pass and
+export the runs together; `export.py` keeps a decision seen twice once.
 
 ### Two evaluation units, never mixed
 
