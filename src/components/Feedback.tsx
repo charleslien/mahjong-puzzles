@@ -4,6 +4,7 @@ import { analyzePosition, visibleCounts } from '../lib/analyzePosition';
 import { BRANCH_LABELS, consumedKey, isMultiStep } from '../lib/decision';
 import { GRADE_LABELS, formatLoss, gradeForLoss, type GradedAnswer } from '../lib/grade';
 import type { PuzzleStats } from '../lib/supabase';
+import { answerTags } from '../lib/tags';
 import { tileToIndex, type Tile } from '../lib/tiles';
 import type { ActionBranch, Puzzle } from '../types/puzzle';
 import { ActionLabel, stripTileName } from './ActionLabel';
@@ -225,6 +226,7 @@ export function Feedback({
   const showLabels = !grouped && labels.size > 1;
   const showShanten = shown.some((action) => action.shantenAfter !== undefined);
   const showUkeire = shown.some((action) => typeof action.ukeire === 'number');
+  const revealed = answerTags(puzzle.tags);
 
   const rowFor = (action: Puzzle['actions'][number]) => (
     <OptionRow
@@ -250,6 +252,21 @@ export function Feedback({
       </header>
 
       <div className="feedback__body">
+        {/* The themes that describe the answer rather than the position, which is
+            why they were not shown above the board. `efficiency-trap` in
+            particular says the tile pure efficiency picks is not the one that
+            wins — and its absence said the opposite, in 815 of 815 discard
+            puzzles without it. */}
+        {revealed.length > 0 && (
+          <p className="feedback__tags">
+            {revealed.map((tag) => (
+              <span key={tag} className="tag">
+                {tag.replace(/-/g, ' ')}
+              </span>
+            ))}
+          </p>
+        )}
+
         {/* No prose restating the table. "You played X, the best was Y" and the
             sentence spelling out the same expected values were both saying what
             the rows below already show — the grade, the points, the gap, and

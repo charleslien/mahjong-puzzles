@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { analyzePosition } from './analyzePosition';
 import { DIFFICULTY_BANDS } from './difficulty';
+import { ANSWER_DERIVED_TAGS, positionTags } from './tags';
 import { NUM_TILE_TYPES, tileToIndex } from './tiles';
 import { bestAction, describeLoss, gradeAnswer } from './grade';
 import { SCHEMA_VERSION, type PuzzleIndex, type PuzzleShard } from '../types/puzzle';
@@ -245,6 +246,19 @@ describe('puzzle bank contents', () => {
     for (const puzzle of puzzles) {
       for (const spoiler of spoilers) {
         expect(puzzle.tags, `${puzzle.id} is tagged ${spoiler}`).not.toContain(spoiler);
+      }
+    }
+  });
+
+  it('shows nothing above the board that depends on the answer', () => {
+    // The bank still stores these — they are how the theme drill finds
+    // positions, and they are the right framing once an answer is in. What must
+    // not happen is showing them while the question is open, which is how
+    // `efficiency-trap` came to be an answer key: absent, the efficiency pick
+    // was an accepted answer in 815 of 815 discard puzzles.
+    for (const puzzle of puzzles) {
+      for (const tag of positionTags(puzzle.tags)) {
+        expect(ANSWER_DERIVED_TAGS.has(tag), `${puzzle.id} would show ${tag}`).toBe(false);
       }
     }
   });

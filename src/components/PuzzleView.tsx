@@ -12,6 +12,7 @@ import {
 import { difficultyWord } from '../lib/difficulty';
 import type { GradedAnswer } from '../lib/grade';
 import { replayKyoku, snapshotFromPosition, type Snapshot } from '../lib/replay';
+import { positionTags } from '../lib/tags';
 import type { Tile } from '../lib/tiles';
 import type { PuzzleStats } from '../lib/supabase';
 import type { ActionBranch, MeldKind, Puzzle } from '../types/puzzle';
@@ -411,12 +412,19 @@ export function PuzzleView({
             {index + 1} <span className="muted">of {total}</span>
           </span>
           {/* Tags carry the theme; the raw record id does not mean anything to a
-              solver, so it survives only as the permalink it is useful for. */}
-          {puzzle.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="tag">
-              {tag.replace(/-/g, ' ')}
-            </span>
-          ))}
+              solver, so it survives only as the permalink it is useful for.
+
+              Only the ones describing the position. `efficiency-trap` says the
+              obvious efficient discard is *not* the answer — and its absence
+              says it is, which held in 815 of 815 discard puzzles that lack it.
+              Those wait for the feedback panel. */}
+          {positionTags(puzzle.tags)
+            .slice(0, 3)
+            .map((tag) => (
+              <span key={tag} className="tag">
+                {tag.replace(/-/g, ' ')}
+              </span>
+            ))}
         </div>
         <div className="puzzle__meta">
           <span className="puzzle__difficulty" title={`Difficulty ${puzzle.difficulty} of 100`}>

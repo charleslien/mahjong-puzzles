@@ -310,6 +310,33 @@ bamboo with 2+3 leaves a different hand than with 3+5, and eating the red five
 gives away a dora. Grouping in the feedback table follows the same rule, so two
 ways to chi the same tile are two headings rather than one confusing list.
 
+### A theme is not shown before it can be
+
+Most tags describe the position — an open hand, an opponent's riichi, a short
+wall — and a solver reads all of that off the board anyway. Three are computed
+from the answer, and one of them was very nearly an answer key.
+
+`efficiency-trap` marks the positions where the tile pure efficiency picks is
+not the tile akochan picks. Measured over the 942 discard puzzles in the shipped
+bank:
+
+| | efficiency pick is an accepted answer |
+| --- | --- |
+| without the chip | 815 of 815 |
+| with the chip | 21 of 127 |
+
+Computing the efficiency pick is the baseline skill the site is for, so a chip
+row rendered above an unanswered board turned "which tile is best" into "does
+the row say trap". That is the same failure as the `declared` / `called` chips
+that predicted the branch in 713 of 713 riichi and call puzzles — a fact about
+the answer, shown before it.
+
+They are still stored: they are how the theme drill finds positions, and after
+an answer they are the framing a solver wants. `src/lib/tags.ts` decides which
+may appear when, and `puzzleBank.test.ts` checks it against the bank on disk.
+Choosing to drill traps is the solver's own hint to take; a chip they did not
+ask for is not.
+
 ### Difficulty
 
 Lichess learns difficulty from real solve attempts via Glicko-2, which needs a
