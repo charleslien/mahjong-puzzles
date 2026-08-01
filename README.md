@@ -1,5 +1,7 @@
 # Mahjong Puzzles
 
+[![CI](https://github.com/charleslien/mahjong-puzzles/actions/workflows/ci.yml/badge.svg)](https://github.com/charleslien/mahjong-puzzles/actions/workflows/ci.yml)
+
 Riichi mahjong decision drills, mined from real games and graded by evaluation
 loss. A static site, deployed on Vercel, with an offline generation pipeline that
 never runs in the browser.
