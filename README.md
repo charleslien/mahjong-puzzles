@@ -183,7 +183,14 @@ single session.
 `curate.py` separates the two questions. Mine densely, then spend the budget
 where the bank is thin:
 
-    QUOTA="riichi=9000 call=0 discard=0" ./scripts/run-pipeline.sh 6000 30
+    QUOTA="riichi=9000 call=0 discard=0" MAX_SHANTEN=0 \
+      ./scripts/run-pipeline.sh 6000 30
+
+`MAX_SHANTEN=0` is the same idea one stage earlier: annotation computes
+acceptance over fourteen discards per hand, but decides from a single shanten
+call whether the hand is tenpai at all, so a riichi-aimed pass can skip ~90% of
+that work. Measured on a 2,000-candidate slice: 21.7s to 3.7s, finding exactly
+the same 57 riichi-capable positions.
 
 It labels each candidate with the puzzle it would *become* rather than the
 decision it was extracted as. akochan still has the final say — a position is

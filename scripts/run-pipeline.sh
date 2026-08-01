@@ -60,9 +60,14 @@ echo "==> 2/7 mine (every ${STRIDE}th decision)"
   --input "$WORK/decisions.jsonl.gz" --output "$WORK/candidates.jsonl" \
   --checkpoint "$CHECKPOINT" --stride "$STRIDE"
 
+# MAX_SHANTEN=0 keeps only tenpai hands, which is the cheap way to run a pass
+# aimed at riichi puzzles: the shanten check happens before acceptance is
+# computed over fourteen discards, so it is ~6x faster and finds the same
+# riichi-capable positions.
 echo "==> 3/7 annotate with the ukeire baseline"
 npm run --silent annotate:ukeire -- \
-  --input "$WORK/candidates.jsonl" --output "$WORK/annotated.jsonl"
+  --input "$WORK/candidates.jsonl" --output "$WORK/annotated.jsonl" \
+  --max-shanten "${MAX_SHANTEN:-2}"
 
 # Verification is the expensive stage, so what it sees is chosen rather than
 # whatever --stride happened to sample. With no QUOTA set this only thins

@@ -51,7 +51,25 @@ async function main(): Promise<number> {
   const inputPath = argValue('--input');
   const outputPath = argValue('--output');
   if (!inputPath || !outputPath) {
-    process.stderr.write('usage: --input <candidates.jsonl> --output <annotated.jsonl>\n');
+    process.stderr.write(
+      'usage: --input <candidates.jsonl> --output <annotated.jsonl> [--max-shanten N]\n',
+    );
+    return 2;
+  }
+
+  /**
+   * How far from a win a hand may be and still count as a discard problem.
+   *
+   * Two defensible on their own terms — past that, efficiency stops having a
+   * meaningful answer. Worth exposing because it is also the cheap way to run a
+   * pass aimed at one kind of puzzle: `--max-shanten 0` keeps only tenpai hands,
+   * and `analyzePosition` decides that from one shanten call before it computes
+   * acceptance over fourteen discards, which is the expensive part. A riichi
+   * mining pass annotates a twentieth as much work for the same result.
+   */
+  const maxShanten = Number(argValue('--max-shanten') ?? 2);
+  if (!Number.isInteger(maxShanten) || maxShanten < 0) {
+    process.stderr.write('--max-shanten must be a non-negative integer\n');
     return 2;
   }
 
@@ -103,7 +121,7 @@ async function main(): Promise<number> {
       continue;
     }
 
-    const analysis = analyzePosition(candidate.position);
+    const analysis = analyzePosition(candidate.position, maxShanten);
     if (!analysis) {
       // Complete or far-from-tenpai hands are not discard problems. Dropped
       // here rather than carried forward with empty annotations, which would
